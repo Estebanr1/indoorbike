@@ -1,0 +1,2710 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="screen-orientation" content="landscape">
+  <title>BIKE RACE — ARCADE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <style>
+    /* ══ VARIABLES ══ */
+    :root {
+      --cyan:    #00f5ff;
+      --orange:  #ff6a00;
+      --magenta: #ff00c8;
+      --green:   #39ff14;
+      --bg:      #04060f;
+      --panel:   #080c1a;
+      --border:  #1a2540;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: 'Rajdhani', sans-serif;
+      background: var(--bg);
+      color: #e0e8ff;
+      overflow-x: hidden;
+    }
+
+    /* ══ LANDSCAPE ONLY ══ */
+    #rotateOverlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 9999;
+      background: #04060f;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 20px;
+    }
+    @media (orientation: portrait) {
+      #rotateOverlay { display: flex; }
+    }
+    .rotate-icon {
+      font-size: 4rem;
+      animation: rotateAnim 2s ease-in-out infinite;
+    }
+    @keyframes rotateAnim {
+      0%   { transform: rotate(0deg); }
+      40%  { transform: rotate(-90deg); }
+      60%  { transform: rotate(-90deg); }
+      100% { transform: rotate(0deg); }
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0,245,255,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,245,255,.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.1) 2px, rgba(0,0,0,.1) 4px);
+    }
+
+    /* ══ LAYOUT ══ */
+    #app {
+      position: relative; z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 12px 12px 20px;
+    }
+
+    .page { display: none; opacity: 0; }
+    .page.active { display: block; animation: pageFadeIn .35s ease forwards; }
+    @keyframes pageFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    /* Fixed pages (trainer, online, etc) also fade */
+    #trainerMenu.page.active,
+    #trainerSession.page.active,
+    #trainerResults.page.active,
+    #seleccionModo.active,
+    #paginaOnline.active,
+    #juegoCarrera.active,
+    #resultados.active {
+      animation: pageFadeIn .35s ease forwards;
+    }
+
+    /* ══ TYPOGRAPHY ══ */
+    .orb { font-family: 'Orbitron', monospace; font-weight: 900; text-transform: uppercase; }
+    .label-sm { font-family: 'Rajdhani', sans-serif; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; font-size: .7rem; color: #3a4570; }
+
+    /* ══ NEON ══ */
+    .c-cyan    { color: var(--cyan);    text-shadow: 0 0 10px var(--cyan); }
+    .c-orange  { color: var(--orange);  text-shadow: 0 0 10px var(--orange); }
+    .c-green   { color: var(--green);   text-shadow: 0 0 10px var(--green); }
+    .c-mag     { color: var(--magenta); text-shadow: 0 0 10px var(--magenta); }
+
+    /* ══ PANEL ══ */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      opacity: .5;
+    }
+
+    /* ══ BUTTONS ══ */
+    .btn {
+      font-family: 'Orbitron', monospace;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border: 2px solid;
+      background: transparent;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all .15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 20px;
+      font-size: .75rem;
+      width: 100%;
+    }
+    .btn:active { transform: scale(.97); }
+
+    .btn-cyan   { border-color: var(--cyan);    color: var(--cyan);    box-shadow: 0 0 10px rgba(0,245,255,.2); }
+    .btn-orange { border-color: var(--orange);  color: var(--orange);  box-shadow: 0 0 10px rgba(255,106,0,.2); }
+    .btn-green  { border-color: var(--green);   color: var(--green);   box-shadow: 0 0 10px rgba(57,255,20,.2); background: rgba(57,255,20,.06); }
+    .btn-mag    { border-color: var(--magenta); color: var(--magenta); box-shadow: 0 0 10px rgba(255,0,200,.2); }
+    .btn-ghost  { border-color: var(--border);  color: #3a4570; font-size: .65rem; padding: 10px 16px; }
+
+    .btn-cyan:hover   { background: rgba(0,245,255,.1);   box-shadow: 0 0 24px rgba(0,245,255,.4); }
+    .btn-orange:hover { background: rgba(255,106,0,.1);   box-shadow: 0 0 24px rgba(255,106,0,.4); }
+    .btn-green:hover  { background: rgba(57,255,20,.15);  box-shadow: 0 0 24px rgba(57,255,20,.5); }
+    .btn-mag:hover    { background: rgba(255,0,200,.1);   box-shadow: 0 0 24px rgba(255,0,200,.4); }
+    .btn-ghost:hover  { border-color: #2a3560; color: #5a6590; }
+
+    /* ══ PAGE BACKGROUNDS ══ */
+    /* ══ SELECCION MODO BG ══ */
+    #seleccionModo {
+      position: fixed; inset: 0; z-index: 110;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 24px 16px;
+    }
+    /* Background image via pseudo — same technique as menu principal */
+    #seleccionModo::after {
+      content: '';
+      position: absolute; inset: 0; z-index: 0;
+      background-image: url('public/bg-modos.png');
+      background-size: cover;
+      background-position: 25% center;
+      background-repeat: no-repeat;
+    }
+    #seleccionModo.active { display: flex; }
+    #seleccionModo::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(4,6,15,.72) 0%,
+        rgba(4,6,15,.45) 40%,
+        rgba(4,6,15,.75) 100%
+      );
+      pointer-events: none;
+    }
+    #seleccionModo > * { position: relative; z-index: 2; width: 100%; max-width: 560px; }
+    /* Dark overlay on top of bg image */
+    #seleccionModo::before { z-index: 1; }
+    /* También cubrir paginaOnline, juegoCarrera, resultados */
+    #paginaOnline.active, #juegoCarrera.active, #resultados.active {
+      position: fixed; inset: 0; z-index: 110;
+      display: block; overflow-y: auto;
+      background: var(--bg);
+    }
+
+    /* ══ MODE CARDS ══ */
+    .mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .mode-card {
+      background: rgba(4,6,15,.70);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .mode-card:hover { transform: translateY(-2px); }
+    .mode-card.c1:hover { border-color: var(--cyan);   box-shadow: 0 6px 24px rgba(0,245,255,.15); }
+    .mode-card.c2:hover { border-color: var(--orange); box-shadow: 0 6px 24px rgba(255,106,0,.15); }
+    .mode-card .icon { font-size: 2.2rem; margin-bottom: 10px; }
+    .mode-card .title { font-family: 'Orbitron', monospace; font-size: .75rem; font-weight: 900; letter-spacing: 2px; margin-bottom: 6px; }
+    .mode-card .desc { font-size: .8rem; color: #3a4570; font-weight: 600; margin-bottom: 18px; }
+
+    /* ══ SENSOR STRIP ══ */
+    .sensor-bar {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #4a5580;
+      margin-bottom: 12px;
+      transition: all .3s;
+    }
+    .sensor-bar.ok { border-color: var(--green); color: var(--green); background: rgba(57,255,20,.05); }
+
+    /* ══ ONLINE INPUT ══ */
+    #codigoSala {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      font-weight: 900;
+      letter-spacing: 12px;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan), 0 0 60px rgba(0,245,255,.3);
+      text-align: center;
+      display: block;
+    }
+    #inputCodigoSala {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(1.4rem, 5vw, 2rem);
+      font-weight: 700;
+      letter-spacing: 10px;
+      text-align: center;
+      background: rgba(0,245,255,.04);
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      color: var(--cyan);
+      padding: 14px;
+      width: 100%;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    #inputCodigoSala:focus { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0,245,255,.3); }
+
+    /* ══ WAIT PULSE ══ */
+    @keyframes waitPulse {
+      0%,100% { opacity:.4; } 50% { opacity:1; }
+    }
+    .wait-pulse { animation: waitPulse 1.5s ease-in-out infinite; }
+
+    /* ══ HUD ══ */
+    .hud {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .hud-cell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .hud-val {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: clamp(1.3rem, 4vw, 2rem);
+      line-height: 1;
+    }
+    .hud-lbl { font-size: .55rem; letter-spacing: 2px; color: #3a4570; margin-top: 2px; text-transform: uppercase; }
+
+    /* ══ RACE TRACK ══ */
+    #raceTrackWrap {
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      position: relative;
+      /* height set dynamically via JS / CSS var */
+      height: var(--track-h, 420px);
+    }
+
+    .race-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom, #000510 0%, #020820 20%, #03122a 40%, #041520 60%, #0a1f10 80%, #061408 100%);
+    }
+
+    /* Road centered */
+    .road {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      top: 0; bottom: 0;
+      display: flex; z-index: 2;
+    }
+    .lane {
+      position: relative;
+      width: var(--lane-w, 140px);
+      background: linear-gradient(to right, #0e1520, #141c2e, #0e1520);
+      border-left: 3px solid rgba(255,200,0,.6);
+      border-right: 3px solid rgba(255,200,0,.6);
+    }
+    .lane::after {
+      content: '';
+      position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 3px;
+      background: repeating-linear-gradient(to bottom, rgba(255,255,255,.15) 0px, rgba(255,255,255,.15) 20px, transparent 20px, transparent 40px);
+      animation: roadScroll .6s linear infinite;
+    }
+    @keyframes roadScroll { from { background-position: 0 0; } to { background-position: 0 40px; } }
+
+    .speed-lines {
+      position: absolute; inset: 0; z-index: 1;
+      background: repeating-linear-gradient(to bottom, transparent 0, transparent 60px, rgba(255,255,255,.03) 60px, rgba(255,255,255,.03) 62px);
+      animation: roadScroll .4s linear infinite;
+    }
+    .road-neon { position: absolute; top: 0; bottom: 0; width: 3px; background: linear-gradient(to bottom, transparent, var(--cyan), transparent); box-shadow: 0 0 8px var(--cyan); opacity: .5; }
+    .road-neon.left { left: 0; }
+    .road-neon.right { right: 0; }
+
+    /* Finish line */
+    .finish-line {
+      position: absolute; top: 0; left: 0; right: 0; height: 28px; z-index: 10;
+      background: repeating-linear-gradient(90deg, #000 0, #000 14px, #fff 14px, #fff 28px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .finish-line span {
+      font-family: 'Orbitron', monospace; font-size: .55rem; font-weight: 900; letter-spacing: 4px;
+      background: rgba(0,0,0,.7); color: #fff; padding: 2px 8px; border-radius: 2px;
+    }
+
+    /* Scenery */
+    .scenery { position: absolute; top: 0; bottom: 0; width: 100px; overflow: hidden; z-index: 1; }
+    .scenery.left  { left: 0; }
+    .scenery.right { right: 0; }
+    .scenery-track { position: absolute; top: 0; width: 100%; animation: sceneryScroll 1.2s linear infinite; }
+    .scenery-track.t2 { animation-delay: -0.6s; }
+    @keyframes sceneryScroll { from { transform: translateY(-600px); } to { transform: translateY(500px); } }
+    .bush { position: absolute; font-size: 1.2rem; filter: brightness(.6) saturate(.8); }
+    .glow-edge { position: absolute; top: 0; bottom: 0; width: 16px; }
+    .glow-edge.r { right: 0; background: linear-gradient(to right, transparent, rgba(0,245,255,.07)); }
+    .glow-edge.l { left: 0;  background: linear-gradient(to left,  transparent, rgba(0,245,255,.07)); }
+
+    /* Players */
+    .player-cont {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      transition: bottom .25s cubic-bezier(.22,1,.36,1);
+      text-align: center; z-index: 5;
+    }
+    .speed-streak {
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      width: 4px; height: 0; border-radius: 2px; opacity: 0;
+      transition: height .1s, opacity .1s;
+    }
+    .bike-racing .speed-streak { height: 28px; opacity: .6; }
+    .bike-top-view { display: block; filter: drop-shadow(0 0 8px rgba(0,245,255,.4)); transition: filter .1s; }
+    .bike-racing .bike-top-view { animation: bikeShake .15s ease-in-out infinite alternate; filter: drop-shadow(0 0 18px rgba(0,245,255,.9)); }
+    #lane2 .bike-top-view { filter: drop-shadow(0 0 8px rgba(255,106,0,.4)); }
+    #lane2 .bike-racing .bike-top-view { filter: drop-shadow(0 0 18px rgba(255,106,0,.9)); }
+    @keyframes bikeShake { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-4px) rotate(1deg); } }
+    .player-badge {
+      font-family: 'Orbitron', monospace; font-size: .5rem; font-weight: 700; letter-spacing: 1px;
+      padding: 2px 6px; border-radius: 2px; margin-top: 3px; display: inline-block;
+    }
+    .player-stats { font-family: 'Rajdhani', sans-serif; font-size: .65rem; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
+
+    /* ══ PROGRESS ══ */
+    .progress-wrap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 14px; margin-top: 8px;
+    }
+    .progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .progress-row:last-child { margin-bottom: 0; }
+    .progress-name { font-family: 'Orbitron', monospace; font-size: .55rem; font-weight: 700; letter-spacing: 1px; width: 24px; flex-shrink: 0; }
+    .progress-bar { flex: 1; height: 8px; background: rgba(255,255,255,.05); border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 999px; transition: width .3s ease; position: relative; }
+    .progress-fill::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 6px; background: white; opacity: .4; border-radius: 999px; filter: blur(2px); }
+    .pf-1 { background: linear-gradient(90deg, rgba(0,245,255,.3), var(--cyan)); box-shadow: 0 0 6px var(--cyan); }
+    .pf-2 { background: linear-gradient(90deg, rgba(255,106,0,.3), var(--orange)); box-shadow: 0 0 6px var(--orange); }
+    .progress-pct { font-family: 'Orbitron', monospace; font-size: .55rem; width: 30px; text-align: right; flex-shrink: 0; }
+
+    /* ══ GAME BUTTON (pedalear) ══ */
+    .game-btn {
+      font-family: 'Orbitron', monospace; font-weight: 700; font-size: .75rem; letter-spacing: 2px;
+      border: 2px solid; border-radius: 6px; cursor: pointer; transition: all .1s;
+      flex: 1; height: 64px;
+    }
+    .game-btn:active { transform: scale(.96); }
+    .game-btn-p1 { background: rgba(0,245,255,.07); border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 14px rgba(0,245,255,.2); }
+    .game-btn-p2 { background: rgba(255,106,0,.07); border-color: var(--orange); color: var(--orange); box-shadow: 0 0 14px rgba(255,106,0,.2); }
+    .game-btn-p1:hover { background: rgba(0,245,255,.14); box-shadow: 0 0 26px rgba(0,245,255,.4); }
+    .game-btn-p2:hover { background: rgba(255,106,0,.14); box-shadow: 0 0 26px rgba(255,106,0,.4); }
+
+    /* ══ RESULTS ══ */
+    .results-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .results-header { padding: 24px; text-align: center; border-bottom: 1px solid var(--border); background: linear-gradient(to bottom, rgba(0,245,255,.04), transparent); }
+    .winner-icon { font-size: 3.5rem; display: block; margin-bottom: 8px; }
+    .result-card { padding: 20px; text-align: center; }
+    .result-dist { font-family: 'Orbitron', monospace; font-size: clamp(1.5rem, 5vw, 2.2rem); font-weight: 900; line-height: 1; }
+    .result-lbl { font-size: .7rem; letter-spacing: 2px; color: #3a4570; margin-top: 4px; }
+
+    /* ══ RACE CONFIG PANEL ══ */
+    .config-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 0 0 8px 8px;
+      border-top: none;
+      padding: 18px 16px 20px;
+      margin-top: -4px;
+      animation: slideDown .2s ease;
+    }
+    @keyframes slideDown {
+      from { opacity:0; transform: translateY(-8px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+    .config-title {
+      font-family: 'Orbitron', monospace;
+      font-size: .6rem; font-weight: 700; letter-spacing: 3px;
+      color: #3a4570; text-transform: uppercase;
+      margin-bottom: 14px; text-align: center;
+    }
+    .config-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; gap: 8px;
+    }
+    .config-row:last-child { margin-bottom: 0; }
+    .config-lbl {
+      font-family: 'Orbitron', monospace; font-size: .6rem; font-weight: 700;
+      letter-spacing: 2px; color: #4a5580; text-transform: uppercase;
+      flex-shrink: 0; width: 72px;
+    }
+    .stepper {
+      display: flex; align-items: center; gap: 0;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 5px; overflow: hidden;
+      flex: 1;
+    }
+    .stepper-btn {
+      font-family: 'Orbitron', monospace; font-weight: 900;
+      font-size: 1rem; color: #4a5580;
+      background: none; border: none;
+      padding: 8px 14px; cursor: pointer;
+      transition: all .15s; flex-shrink: 0;
+      line-height: 1;
+    }
+    .stepper-btn:hover { color: var(--cyan); background: rgba(0,245,255,.06); }
+    .stepper-btn:active { transform: scale(.9); }
+    .stepper-val {
+      font-family: 'Orbitron', monospace; font-weight: 900;
+      font-size: .95rem; color: #e0e8ff;
+      text-align: center; flex: 1;
+      letter-spacing: 1px;
+    }
+    .stepper-val.c-cyan  { color: var(--cyan);   text-shadow: 0 0 8px var(--cyan); }
+    .stepper-val.c-orange{ color: var(--orange);  text-shadow: 0 0 8px var(--orange); }
+
+    /* Toggle sin tiempo */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .toggle-lbl { font-family: 'Orbitron', monospace; font-size: .6rem; font-weight: 700; letter-spacing: 2px; color: #4a5580; text-transform: uppercase; }
+    .toggle-wrap { display: flex; align-items: center; gap: 8px; }
+    .toggle-switch {
+      position: relative; width: 40px; height: 22px; cursor: pointer;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute; inset: 0; border-radius: 22px;
+      background: rgba(255,255,255,.07); border: 1px solid var(--border);
+      transition: all .2s;
+    }
+    .toggle-switch input:checked + .toggle-track {
+      background: rgba(57,255,20,.15); border-color: var(--green);
+      box-shadow: 0 0 8px rgba(57,255,20,.3);
+    }
+    .toggle-thumb {
+      position: absolute; top: 3px; left: 3px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #3a4570; transition: all .2s;
+    }
+    .toggle-switch input:checked ~ .toggle-thumb { left: 21px; background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .toggle-status { font-family: 'Orbitron', monospace; font-size: .55rem; color: #3a4570; letter-spacing: 1px; }
+    .toggle-switch input:checked ~ .toggle-thumb { left: 21px; }
+
+    /* Start button inside config */
+    .btn-start-race {
+      width: 100%; margin-top: 4px;
+      font-family: 'Orbitron', monospace; font-weight: 700; font-size: .75rem;
+      letter-spacing: 2px; text-transform: uppercase;
+      border: 2px solid var(--green); color: var(--green);
+      background: rgba(57,255,20,.08); border-radius: 5px;
+      padding: 13px; cursor: pointer;
+      box-shadow: 0 0 12px rgba(57,255,20,.2);
+      transition: all .15s;
+    }
+    .btn-start-race:hover { background: rgba(57,255,20,.15); box-shadow: 0 0 24px rgba(57,255,20,.45); }
+    .btn-start-race:active { transform: scale(.97); }
+
+    /* mode-card con config abierta */
+    .mode-card.open { border-radius: 8px 8px 0 0; border-bottom-color: transparent; }
+
+    /* ══ SPEED TRAIL ══ */
+    .trail-wrap {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 10px;
+      pointer-events: none;
+    }
+    .trail-line {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 2px;
+      border-radius: 2px;
+      opacity: 0;
+      transition: none;
+    }
+    /* Lines animate when bike-racing */
+    .bike-racing ~ .trail-wrap .trail-line,
+    .bike-racing + .trail-wrap .trail-line {
+      animation: trailFade .4s ease-out forwards;
+    }
+    @keyframes trailFade {
+      0%   { opacity: .9; height: 18px; transform: translateX(-50%) translateY(0); }
+      100% { opacity: 0;  height: 28px; transform: translateX(-50%) translateY(14px); }
+    }
+    .tl1 { animation-delay: 0s !important; }
+    .tl2 { animation-delay: .06s !important; left: calc(50% - 3px) !important; }
+    .tl3 { animation-delay: .12s !important; left: calc(50% + 3px) !important; }
+
+    /* ══ VIDEO MODE ══ */
+    #videoModeWrap {
+      position: fixed; inset: 0; z-index: 50;
+      background: #000;
+      display: none;
+      flex-direction: column;
+    }
+    #videoModeWrap.active { display: flex; }
+
+    #raceVideo {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      position: absolute; inset: 0;
+    }
+
+    /* HUD superpuesto */
+    .video-hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px;
+      background: linear-gradient(to bottom, rgba(0,0,0,.7), transparent);
+    }
+    .video-hud-item {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      text-align: center;
+    }
+    .video-hud-val {
+      font-size: clamp(1.4rem, 4vw, 2.2rem);
+      line-height: 1;
+    }
+    .video-hud-lbl {
+      font-size: .5rem;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,.4);
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+
+    /* Speed bar en el costado */
+    .video-speed-bar {
+      position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 10;
+      width: 8px;
+      height: 160px;
+      background: rgba(255,255,255,.1);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    .video-speed-fill {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      border-radius: 4px;
+      background: linear-gradient(to top, var(--green), var(--cyan));
+      box-shadow: 0 0 8px var(--cyan);
+      transition: height .15s ease;
+    }
+    .video-speed-lbl {
+      position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
+      font-family: 'Orbitron', monospace;
+      font-size: .55rem;
+      color: rgba(255,255,255,.3);
+      letter-spacing: 2px;
+      writing-mode: vertical-rl;
+    }
+
+    /* Progress bar abajo */
+    .video-progress-wrap {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      z-index: 10;
+      padding: 12px 16px 20px;
+      background: linear-gradient(to top, rgba(0,0,0,.75), transparent);
+    }
+    .video-progress-bar {
+      height: 6px;
+      background: rgba(255,255,255,.15);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .video-progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--cyan), var(--green));
+      box-shadow: 0 0 8px var(--cyan);
+      transition: width .3s ease;
+    }
+    .video-dist-row {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .video-dist-val {
+      font-family: 'Orbitron', monospace;
+      font-size: .75rem;
+      font-weight: 700;
+      color: var(--cyan);
+      text-shadow: 0 0 8px var(--cyan);
+    }
+    .video-dist-meta {
+      font-family: 'Orbitron', monospace;
+      font-size: .6rem;
+      color: rgba(255,255,255,.3);
+      letter-spacing: 2px;
+    }
+
+    /* Paused overlay */
+    .video-paused-msg {
+      position: absolute; inset: 0; z-index: 11;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.5);
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(1.2rem, 4vw, 2rem);
+      font-weight: 900;
+      color: rgba(255,255,255,.6);
+      letter-spacing: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .video-paused-msg.show { opacity: 1; }
+
+    /* ══ TRAINER MODE ══ */
+    #trainerMenu {
+      position: fixed; inset: 0; z-index: 110;
+      background: #08040f;
+      overflow: hidden;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    /* page class controls display via !important override */
+    #trainerMenu.page { display: none; }
+    #trainerMenu.page.active { display: flex !important; }
+
+    #trainerSession, #trainerResults {
+      position: fixed; inset: 0; z-index: 110;
+      background: var(--bg);
+      overflow-y: auto;
+    }
+    #trainerSession.page { display: none; }
+    #trainerSession.page.active { display: block !important; }
+    #trainerResults.page { display: none; }
+    #trainerResults.page.active { display: block !important; }
+
+    /* ── TRAINER MENU BG ── */
+    #trainerMenuBg {
+      position: absolute; inset: 0;
+      background-image: url('public/bg-trainer-menu.png');
+      background-size: cover;
+      background-position: center;
+      z-index: 0;
+      transition: filter 1s ease;
+    }
+    #trainerMenuBg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom,
+        rgba(8,4,15,.75) 0%,
+        rgba(8,4,15,.45) 40%,
+        rgba(8,4,15,.65) 100%
+      );
+    }
+
+    /* Luces neón del fondo que cambian de color */
+    #trainerNeonLeft, #trainerNeonRight {
+      position: absolute; top: 0; bottom: 0; width: 6px;
+      z-index: 1; pointer-events: none;
+      border-radius: 3px;
+      transition: background 1s ease, box-shadow 1s ease;
+    }
+    #trainerNeonLeft  { left: 8%; }
+    #trainerNeonRight { right: 8%; }
+
+    /* ── CARRUSEL VERTICAL ── */
+    #trainerCarousel {
+      position: relative; z-index: 5;
+      width: 100%; max-width: 520px;
+      display: flex; flex-direction: column;
+      align-items: center;
+      gap: 0;
+      padding: 0 16px;
+    }
+
+    .carousel-arrow {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.2rem; font-weight: 900;
+      background: rgba(0,0,0,.5);
+      border: 1px solid rgba(255,255,255,.15);
+      color: rgba(255,255,255,.6);
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      z-index: 2;
+    }
+    .carousel-arrow:hover {
+      background: rgba(255,255,255,.1);
+      color: white;
+      border-color: rgba(255,255,255,.4);
+    }
+    .carousel-arrow:active { transform: scale(.92); }
+
+    /* Ventana del carrusel */
+    #carouselWindow {
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+      padding: 8px 0;
+    }
+
+    /* Card del programa */
+    .prog-card {
+      width: 100%;
+      border-radius: 10px;
+      padding: 24px 28px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all .4s cubic-bezier(.22,1,.36,1);
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(8,4,20,.82);
+      backdrop-filter: blur(12px);
+      transform: scale(.88);
+      opacity: .4;
+      margin-bottom: 10px;
+    }
+    .prog-card.active-card {
+      transform: scale(1);
+      opacity: 1;
+      border-color: rgba(255,255,255,.25);
+      box-shadow: 0 0 40px var(--card-glow, rgba(150,80,255,.3)),
+                  inset 0 0 30px rgba(0,0,0,.4);
+    }
+    .prog-card.prev-card, .prog-card.next-card {
+      transform: scale(.88);
+      opacity: .35;
+    }
+
+    /* Línea superior de color */
+    .prog-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--card-color, #9b59b6);
+      box-shadow: 0 0 12px var(--card-color, #9b59b6);
+    }
+
+    .prog-card-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .prog-card-name {
+      font-family: 'Orbitron', monospace; font-weight: 900;
+      font-size: clamp(1rem, 3vw, 1.4rem);
+      letter-spacing: 2px; line-height: 1.1;
+    }
+    .prog-card-meta {
+      text-align: right;
+    }
+    .prog-card-dur {
+      font-family: 'Orbitron', monospace; font-size: 1.6rem;
+      font-weight: 900; line-height: 1;
+    }
+    .prog-card-level {
+      font-size: .6rem; letter-spacing: 2px;
+      color: rgba(255,255,255,.4); text-transform: uppercase; margin-top: 2px;
+    }
+
+    /* Mini gráfico en la card */
+    .prog-mini-chart {
+      display: flex; align-items: flex-end;
+      gap: 2px; height: 36px; margin-bottom: 14px;
+    }
+    .prog-mini-bar {
+      border-radius: 2px 2px 0 0; flex: 1; min-width: 4px;
+    }
+
+    .prog-card-btn {
+      font-family: 'Orbitron', monospace; font-size: .65rem;
+      font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+      border: 1px solid; border-radius: 5px;
+      background: transparent; cursor: pointer;
+      padding: 10px 20px; width: 100%;
+      transition: all .2s;
+    }
+    .prog-card-btn:hover { opacity: .8; }
+    .prog-card-btn:active { transform: scale(.97); }
+
+    /* Indicadores de posición (dots) */
+    #carouselDots {
+      display: flex; gap: 6px; margin-top: 12px; z-index: 5;
+    }
+    .c-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(255,255,255,.2);
+      transition: all .3s;
+    }
+    .c-dot.active { width: 20px; border-radius: 3px; }
+
+    /* Título arriba */
+    #trainerMenuTitle {
+      position: relative; z-index: 5;
+      text-align: center; margin-bottom: 24px;
+    }
+
+    /* Program cards */
+    .program-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 16px;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .program-card::before {
+      content: ''; position: absolute; top:0; left:0; right:0; height:2px;
+    }
+    .program-card:hover { transform: translateY(-2px); }
+
+    .program-bar-preview {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 40px;
+      margin: 10px 0 8px;
+    }
+    .preview-bar {
+      border-radius: 2px 2px 0 0;
+      flex: 1;
+      min-width: 6px;
+    }
+
+    /* Session HUD */
+    .trainer-hud-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .trainer-hud-cell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+    }
+    .tr-val {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: clamp(1.2rem, 4vw, 1.8rem);
+      line-height: 1;
+    }
+    .tr-lbl {
+      font-size: .55rem;
+      letter-spacing: 2px;
+      color: #3a4570;
+      margin-top: 3px;
+      text-transform: uppercase;
+    }
+
+    /* RPM meter */
+    .rpm-meter {
+      background: rgba(0,245,255,.05);
+      border: 1px solid rgba(0,245,255,.2);
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 0 12px rgba(0,245,255,.08);
+    }
+    .rpm-big {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 2.8rem;
+      color: var(--cyan);
+      text-shadow: 0 0 16px var(--cyan), 0 0 40px rgba(0,245,255,.4);
+      line-height: 1;
+      flex-shrink: 0;
+      min-width: 90px;
+    }
+    #trRPMFeedback {
+      font-family: 'Orbitron', monospace;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      transition: color .3s;
+    }
+
+    /* Trainer message */
+    .trainer-message-box {
+      background: rgba(0,245,255,.05);
+      border: 1px solid rgba(0,245,255,.15);
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+    }
+    #trMessage {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #c0d8e8;
+      letter-spacing: .5px;
+      transition: opacity .3s, transform .3s;
+    }
+
+    /* Chart */
+    #trChart {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 80px;
+      background: rgba(0,0,0,.3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      margin-bottom: 10px;
+      overflow-x: auto;
+    }
+    .chart-bar { flex-shrink: 0; transition: opacity .3s, box-shadow .3s; }
+    .chart-bar.active-bar { outline: 2px solid white; outline-offset: 1px; }
+
+    /* Progress bar */
+    .tr-progress-wrap {
+      background: rgba(255,255,255,.05);
+      border-radius: 99px;
+      height: 6px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    #trProgressFill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--cyan), var(--green));
+      transition: width .5s ease;
+      box-shadow: 0 0 6px var(--cyan);
+    }
+
+    /* Stop button */
+    .btn-stop {
+      font-family: 'Orbitron', monospace;
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      border: 1px solid rgba(255,60,60,.3);
+      background: rgba(255,60,60,.06);
+      color: rgba(255,80,80,.7);
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-stop:hover { background: rgba(255,60,60,.15); color: #ff4444; }
+
+    /* ══ TRAINER AVATAR ══ */
+    #trainerAvatarWrap {
+      position: relative;
+      width: 100%;
+      height: min(580px, 75vh);
+      margin: 0 auto;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    /* Fondo del estudio */
+    #trainerBg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      object-position: center;
+      z-index: 0;
+    }
+
+    /* Sprite ciclista — dentro del círculo */
+    #trainerSprite {
+      position: absolute;
+      /* Ajustar para que quede dentro del círculo central */
+      bottom: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+      height: 65%;
+      width: auto;
+      z-index: 2;
+      filter: drop-shadow(0 0 20px rgba(100,0,255,.4));
+    }
+
+    /* Efecto respiración parado */
+    @keyframes breathe {
+      0%,100% { transform: translateX(-50%) translateY(0); }
+      50%      { transform: translateX(-50%) translateY(-3px); }
+    }
+
+    /* Overlay zona — tinte sutil */
+    #trainerZoneOverlay {
+      position: absolute; inset: 0; z-index: 3;
+      pointer-events: none; opacity: 0;
+      transition: opacity .6s; border-radius: 10px;
+    }
+
+    /* ── HUD PANELS (sobre el fondo) ── */
+    .tr-panel {
+      position: absolute; z-index: 5;
+      background: rgba(5,2,20,.82);
+      border: 1px solid rgba(100,60,200,.4);
+      border-radius: 8px;
+      padding: 10px 14px;
+      backdrop-filter: blur(6px);
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+    }
+    .tr-panel-val {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900; line-height: 1;
+      font-size: clamp(1.4rem, 4vw, 2.2rem);
+    }
+    .tr-panel-sub {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(.45rem, 1.2vw, .6rem);
+      letter-spacing: 2px; color: rgba(255,255,255,.45);
+      text-transform: uppercase; margin-top: 2px;
+    }
+    .tr-panel-lbl {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(.4rem, 1vw, .55rem);
+      letter-spacing: 3px; color: rgba(150,100,255,.8);
+      text-transform: uppercase; margin-bottom: 4px;
+      font-weight: 700;
+    }
+
+    /* Posiciones de los paneles */
+    #trPanelCad  { top: 28%; left: 2%; width: 22%; }
+    #trPanelRes  { top: 28%; right: 2%; width: 22%; text-align: right; }
+    #trPanelZona { bottom: 2%; left: 2%; width: 28%; }
+    #trPanelTime { bottom: 2%; right: 2%; width: 24%; text-align: right; }
+
+    /* Barras de zona */
+    .zona-bars {
+      display: flex; gap: 3px; margin: 5px 0;
+    }
+    .zona-bar {
+      height: 12px; flex: 1; border-radius: 2px;
+      background: rgba(255,255,255,.08);
+      transition: background .3s, box-shadow .3s;
+    }
+
+    /* Título del programa — arriba centro */
+    #trProgramTitle {
+      position: absolute; top: 3%; left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: clamp(.6rem, 2vw, .9rem);
+      letter-spacing: 4px;
+      color: rgba(200,160,255,.7);
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: 0 0 12px rgba(150,80,255,.5);
+    }
+
+    /* Mensaje flotante */
+    #trainerFloatMsg {
+      position: absolute; bottom: 20%; left: 0; right: 0;
+      text-align: center; z-index: 6; pointer-events: none;
+    }
+    #trainerFloatText {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(.45rem, 1.4vw, .65rem);
+      font-weight: 700; letter-spacing: 2px;
+      background: rgba(0,0,0,.85); color: white;
+      padding: 5px 14px; border-radius: 99px;
+      border: 1px solid rgba(150,80,255,.4);
+      display: inline-block;
+    }
+
+    /* Botón parar — arriba derecha dentro del panel */
+    #trBtnStop {
+      position: absolute; top: 3%; right: 2%; z-index: 6;
+      font-family: 'Orbitron', monospace; font-size: .5rem;
+      font-weight: 700; letter-spacing: 2px;
+      border: 1px solid rgba(255,60,60,.4);
+      background: rgba(255,30,30,.1); color: rgba(255,80,80,.8);
+      padding: 6px 12px; border-radius: 4px; cursor: pointer;
+      transition: all .15s;
+    }
+    #trBtnStop:hover { background: rgba(255,30,30,.25); color: #ff4444; }
+
+        /* ══ ONLINE PAGE BG ══ */
+    #paginaOnline {
+      position: fixed; inset: 0; z-index: 110;
+      overflow-y: auto;
+      background-image: url('public/bg-multiplayer.jpg');
+      background-size: cover;
+      background-position: center 40%;
+    }
+    #paginaOnline::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background: linear-gradient(to bottom,
+        rgba(4,6,15,.82) 0%,
+        rgba(4,6,15,.55) 40%,
+        rgba(4,6,15,.75) 100%
+      );
+    }
+    #paginaOnline > * { position: relative; z-index: 1; }
+
+    /* Luces neón online — cambian con el modo */
+    #onlineNeonL, #onlineNeonR {
+      position: fixed; top: 0; bottom: 0; width: 6px; z-index: 2;
+      pointer-events: none;
+      transition: background 1s ease, box-shadow 1s ease;
+    }
+    #onlineNeonL { left: 0; }
+    #onlineNeonR { right: 0; }
+
+    /* Panel del online sobre el fondo */
+    #paginaOnline .panel {
+      background: rgba(4,6,15,.82);
+      backdrop-filter: blur(12px);
+    }
+
+    /* ══ HIDDEN ══ */
+    .hidden { display: none !important; }
+
+    /* ══════════════════════════════════
+       FULLSCREEN MENU
+    ══════════════════════════════════ */
+    #menuScreen {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: stretch;
+    }
+    #menuScreen.hidden { display: none; }
+
+    .menu-bg {
+      position: absolute; inset: 0;
+      background-image: url('public/bg-menu.png');
+      background-size: cover;
+      background-position: center 30%;
+    }
+    .menu-bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(to right, rgba(0,0,0,.9) 0%, rgba(0,0,0,.65) 38%, rgba(0,0,0,.15) 65%, transparent 100%);
+    }
+
+    .menu-panel {
+      position: relative; z-index: 2;
+      width: min(360px, 80vw);
+      flex-shrink: 0;
+      padding: clamp(24px, 5vw, 48px) 0 clamp(24px, 5vw, 48px) clamp(20px, 5vw, 48px);
+      display: flex; flex-direction: column; justify-content: center;
+    }
+
+    /* Logo */
+    .menu-logo { margin-bottom: clamp(24px, 5vh, 44px); }
+    .menu-logo-sub { font-size: .65rem; letter-spacing: 4px; color: rgba(255,255,255,.35); text-transform: uppercase; margin-bottom: 8px; }
+
+    @keyframes logoPulse {
+      0%   { transform: scale(1);     text-shadow: 0 0 20px rgba(255,106,0,.6), 0 0 60px rgba(255,106,0,.2); }
+      50%  { transform: scale(1.032); text-shadow: 0 0 40px rgba(255,106,0,.9), 0 0 100px rgba(255,106,0,.4), 0 0 180px rgba(255,106,0,.1); }
+      100% { transform: scale(1);     text-shadow: 0 0 20px rgba(255,106,0,.6), 0 0 60px rgba(255,106,0,.2); }
+    }
+    @keyframes raceGlow {
+      0%,100% { opacity: .7;  letter-spacing: 8px; }
+      50%      { opacity: 1;  letter-spacing: 11px; }
+    }
+
+    .logo-bike {
+      display: block;
+      font-family: 'Orbitron', monospace; font-weight: 900; text-transform: uppercase;
+      font-size: clamp(3.5rem, 10vw, 5.8rem);
+      line-height: .9;
+      color: var(--orange);
+      animation: logoPulse 2.8s ease-in-out infinite;
+      transform-origin: left center;
+    }
+    .logo-race {
+      display: block;
+      font-family: 'Orbitron', monospace; font-weight: 900; text-transform: uppercase;
+      font-size: clamp(1.3rem, 3.5vw, 1.9rem);
+      color: rgba(255,255,255,.85);
+      letter-spacing: 8px;
+      animation: raceGlow 2.8s ease-in-out infinite;
+    }
+
+    /* Menu items */
+    .menu-items { display: flex; flex-direction: column; gap: 2px; }
+    .menu-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 0; cursor: pointer; position: relative;
+      transition: all .15s; border: none; background: none; text-align: left;
+    }
+    .menu-item::before {
+      content: ''; position: absolute;
+      left: calc(-1 * clamp(20px, 5vw, 48px)); top: 0; bottom: 0;
+      width: 0; background: rgba(255,106,0,.13);
+      transition: width .2s; border-right: 3px solid var(--orange);
+    }
+    .menu-item:hover::before,
+    .menu-item.active::before { width: calc(100% + clamp(20px,5vw,48px) + 24px); }
+
+    .mi-num { font-family: 'Orbitron', monospace; font-size: .5rem; color: rgba(255,255,255,.2); letter-spacing: 1px; width: 18px; flex-shrink: 0; transition: color .15s; }
+    .mi-bar { width: 2px; height: 16px; background: rgba(255,255,255,.1); flex-shrink: 0; transition: background .15s; }
+    .mi-text { font-family: 'Orbitron', monospace; font-size: clamp(.7rem, 2vw, .88rem); font-weight: 700; letter-spacing: 3px; color: rgba(255,255,255,.45); text-transform: uppercase; transition: color .15s, text-shadow .15s; }
+    .mi-arr { font-size: .75rem; color: var(--orange); opacity: 0; margin-left: auto; padding-right: 16px; transition: opacity .15s, transform .15s; }
+
+    .menu-item:hover .mi-num, .menu-item.active .mi-num { color: var(--orange); }
+    .menu-item:hover .mi-bar, .menu-item.active .mi-bar { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+    .menu-item:hover .mi-text, .menu-item.active .mi-text { color: #fff; text-shadow: 0 0 14px rgba(255,255,255,.35); }
+    .menu-item:hover .mi-arr, .menu-item.active .mi-arr { opacity: 1; transform: translateX(3px); }
+
+    /* SALIR rojo */
+    #menuSalir { margin-top: 10px; }
+    #menuSalir .mi-num { color: rgba(255,60,60,.35); }
+    #menuSalir .mi-bar { background: rgba(255,60,60,.18); }
+    #menuSalir .mi-text { color: rgba(255,80,80,.4); }
+    #menuSalir .mi-arr { color: #ff4444; }
+    #menuSalir:hover::before { background: rgba(255,30,30,.1); border-right-color: #ff4444; }
+    #menuSalir:hover .mi-num  { color: #ff4444; }
+    #menuSalir:hover .mi-bar  { background: #ff4444; box-shadow: 0 0 6px #ff4444; }
+    #menuSalir:hover .mi-text { color: #ff4444; text-shadow: 0 0 14px rgba(255,60,60,.5); }
+
+    /* Sensor strip */
+    .menu-sensor {
+      margin-top: clamp(20px, 4vh, 36px);
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,.07);
+    }
+    .menu-sensor-lbl { font-size: .55rem; letter-spacing: 3px; color: rgba(255,255,255,.2); text-transform: uppercase; margin-bottom: 8px; }
+    #menuLedDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.12); margin-right: 5px; vertical-align: middle; transition: all .2s; }
+    #menuLedDot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    #menuDetectarSensor {
+      font-family: 'Orbitron', monospace; font-size: .6rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,.13); background: rgba(255,255,255,.03); color: rgba(255,255,255,.45);
+      padding: 9px 14px; border-radius: 4px; cursor: pointer; width: 100%; max-width: 260px;
+      transition: all .2s;
+    }
+    #menuDetectarSensor:hover { border-color: var(--green); color: var(--green); background: rgba(57,255,20,.05); box-shadow: 0 0 10px rgba(57,255,20,.2); }
+    #menuDetectarSensor.connected { border-color: var(--green); color: var(--green); background: rgba(57,255,20,.05); }
+
+    #menuEstadoConexion { font-size: .6rem; color: rgba(255,255,255,.25); margin-top: 6px; letter-spacing: 1px; font-weight: 600; }
+
+    /* Right side */
+    .menu-right { flex: 1; position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-end; padding: 24px; }
+    .menu-badge { font-family: 'Orbitron', monospace; font-size: .5rem; letter-spacing: 3px; color: rgba(255,255,255,.25); text-transform: uppercase; text-align: right; }
+
+    /* ══════════════════════════════════
+       RESPONSIVE — MOBILE PORTRAIT
+    ══════════════════════════════════ */
+    @media (max-width: 599px) {
+      #app { padding: 8px 8px 16px; }
+
+      /* Menu */
+      .menu-panel { width: 100%; padding: 28px 20px 28px 20px; }
+      .menu-bg::after { background: linear-gradient(to bottom, rgba(0,0,0,.92) 0%, rgba(0,0,0,.85) 60%, rgba(0,0,0,.6) 100%); }
+      .menu-right { display: none; }
+      .menu-item::before { left: -20px; }
+
+      /* Mode cards — stack on very small */
+      .mode-cards { grid-template-columns: 1fr; gap: 10px; }
+
+      /* Track — taller on mobile portrait */
+      #raceTrackWrap { --track-h: 55vmax; }
+      .scenery { width: 60px; }
+      .bush { font-size: .9rem; }
+      .lane { --lane-w: 38vw; }
+
+      /* HUD compact */
+      .hud-val { font-size: 1.3rem; }
+      .hud-cell { padding: 6px 8px; }
+
+      /* Player stats hidden on small */
+      .player-stats { display: none; }
+      .player-badge { font-size: .45rem; }
+
+      /* Game button — full width, taller */
+      #gameControls { flex-direction: column; gap: 8px; margin-top: 8px; }
+      .game-btn { height: 72px; font-size: .8rem; }
+
+      /* Online code smaller */
+      #codigoSala { font-size: 2.2rem; letter-spacing: 8px; }
+    }
+
+    /* ══ TABLET ══ */
+    @media (min-width: 600px) and (max-width: 859px) {
+      #raceTrackWrap { --track-h: 380px; }
+      .scenery { width: 80px; }
+    }
+
+    /* ══ DESKTOP ══ */
+    @media (min-width: 860px) {
+      #raceTrackWrap { --track-h: 440px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ════════ ROTATE OVERLAY ════════ -->
+<div id="rotateOverlay">
+  <div class="rotate-icon">📱</div>
+  <div style="font-family:'Orbitron',monospace;font-size:.9rem;font-weight:700;letter-spacing:3px;color:var(--cyan);text-shadow:0 0 12px var(--cyan);">GIRÁ EL DISPOSITIVO</div>
+  <div style="font-family:'Rajdhani',sans-serif;font-size:.85rem;color:#3a4570;letter-spacing:1px;">Este juego requiere modo horizontal</div>
+  <div style="width:60px;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);margin-top:8px;"></div>
+</div>
+
+<!-- ════════ FULLSCREEN MENU ════════ -->
+<div id="menuScreen">
+  <div class="menu-bg"></div>
+
+  <div class="menu-panel">
+    <div class="menu-logo">
+      <div class="menu-logo-sub">🏁 Arcade Edition</div>
+      <span class="logo-bike">BIKE</span>
+      <span class="logo-race">RACE</span>
+    </div>
+
+    <nav class="menu-items">
+      <button class="menu-item active" id="menuArcade">
+        <span class="mi-num">01</span><span class="mi-bar"></span>
+        <span class="mi-text">Arcade</span><span class="mi-arr">▶</span>
+      </button>
+      <button class="menu-item" id="menuMultiplayer">
+        <span class="mi-num">02</span><span class="mi-bar"></span>
+        <span class="mi-text">Multijugador</span><span class="mi-arr">▶</span>
+      </button>
+      <button class="menu-item" id="menuEntrenamiento">
+        <span class="mi-num">03</span><span class="mi-bar"></span>
+        <span class="mi-text">Entrenamiento</span><span class="mi-arr">▶</span>
+      </button>
+
+      <!-- 04 CONFIGURACIÓN — expande sensor -->
+      <div id="menuSensorWrap">
+        <button class="menu-item" id="menuConectarSensor">
+          <span class="mi-num" id="sensorItemNum">04</span><span class="mi-bar" id="sensorItemBar"></span>
+          <span class="mi-text" id="sensorItemText">Configuración</span>
+          <span class="mi-arr" id="sensorItemArr">▶</span>
+        </button>
+        <div id="sensorExpandPanel" style="max-height:0; overflow:hidden; transition: max-height .3s ease, opacity .2s; opacity:0;">
+          <div style="padding: 8px 0 4px 36px; display:flex; flex-direction:column; gap:6px;">
+            <div class="sensor-tabs">
+              <button class="sensor-tab wifi-tab active-tab" id="tabWiFi">📡 WIFI</button>
+              <button class="sensor-tab" id="tabUSB">🔌 USB</button>
+            </div>
+            <div class="sensor-panel active" id="panelWiFi">
+              <input id="deviceIdInput" type="text" placeholder="bike_001" maxlength="20" autocomplete="off" spellcheck="false">
+              <button id="btnConectarSensor">CONECTAR</button>
+            </div>
+            <div class="sensor-panel" id="panelUSB">
+              <button id="menuDetectarSensor">CONECTAR POR USB</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LED dot oculto para JS -->
+      <span id="menuLedDot" style="display:none;"></span>
+      <!-- Barra sensor conectado -->
+      <div id="sensorConnectedBar" style="display:none; align-items:center; gap:10px; padding:10px 0;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex-shrink:0;"></span>
+        <span style="font-family:'Orbitron',monospace;font-size:.58rem;font-weight:700;letter-spacing:2px;color:var(--green);text-shadow:0 0 8px var(--green);">SENSOR CONECTADO</span>
+        <span id="sensorDeviceLabel" style="font-size:.5rem;color:rgba(57,255,20,.5);letter-spacing:1px;"></span>
+      </div>
+
+      <button class="menu-item" id="menuSalir" style="margin-top:6px;">
+        <span class="mi-num">05</span><span class="mi-bar"></span>
+        <span class="mi-text">Salir</span><span class="mi-arr">▶</span>
+      </button>
+    </nav>
+
+    <div id="menuEstadoConexion" style="display:none;"></div>
+  </div>
+
+  <div class="menu-right">
+    <div class="menu-badge">ESP32 · SENSOR MAGNÉTICO</div>
+  </div>
+</div>
+
+<!-- Hidden elements needed by game.js -->
+<div style="display:none">
+  <div id="estadoConexion"></div>
+  <div id="sensorStatus"></div>
+  <div id="sensorStatusText"></div>
+  <div id="ledDot"></div>
+  <div id="ledStatusText"></div>
+  <div id="clickCounter"></div>
+  <div id="totalClicks"></div>
+  <button id="detectarNodeMCU"></button>
+</div>
+
+<!-- ════════ APP ════════ -->
+<div id="app">
+
+  <div id="inicio" class="page active"></div>
+
+  <!-- ── SELECCIÓN MODO ── -->
+  <div id="seleccionModo" class="page">
+    <!-- Background -->
+    <div style="
+      position:fixed; inset:0; z-index:-1;
+      background-image: url('public/bg-select.png');
+      background-size: cover;
+      background-position: center 40%;
+    ">
+    </div>
+    <div style="text-align:center; padding: 20px 0 24px;">
+      <div class="label-sm c-cyan" style="margin-bottom:6px; text-shadow:0 1px 8px rgba(0,0,0,.8);">SELECCIONA MODO</div>
+      <div class="orb" style="font-size:clamp(1.3rem,4vw,2rem); color:#fff; text-shadow: 0 0 20px rgba(0,0,0,.9), 0 2px 4px rgba(0,0,0,.8);">TIPO DE CARRERA</div>
+    </div>
+
+    <div class="mode-cards">
+
+      <!-- INDIVIDUAL -->
+      <div>
+        <div class="mode-card c1" id="cardSingle">
+          <div class="icon">👤</div>
+          <div class="title c-cyan">INDIVIDUAL</div>
+          <div class="desc">Contra el tiempo</div>
+          <button class="btn btn-cyan" id="btnOpenSingle">COMENZAR</button>
+        </div>
+        <div class="config-panel hidden" id="configSingle">
+          <div class="config-title">⚙ CONFIGURAR CARRERA</div>
+
+          <div class="toggle-row">
+            <div class="toggle-lbl">SIN TIEMPO</div>
+            <div class="toggle-wrap">
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleNoTimeSingle">
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+              <span class="toggle-status" id="noTimeStatusSingle">OFF</span>
+            </div>
+          </div>
+
+          <div class="config-row" id="timeRowSingle">
+            <div class="config-lbl">TIEMPO</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustVal('timeSingle',-5)">−</button>
+              <div class="stepper-val c-orange" id="valTimeSingle">60s</div>
+              <button class="stepper-btn" onclick="adjustVal('timeSingle',+5)">+</button>
+            </div>
+          </div>
+
+          <div class="config-row">
+            <div class="config-lbl">DISTANCIA</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustVal('distSingle',-25)">−</button>
+              <div class="stepper-val c-cyan" id="valDistSingle">1000m</div>
+              <button class="stepper-btn" onclick="adjustVal('distSingle',+25)">+</button>
+            </div>
+          </div>
+
+          <button class="btn-start-race" onclick="startConfiguredGame('single')">▶ INICIAR CARRERA</button>
+        </div>
+      </div>
+
+      <!-- LOCAL 2P -->
+      <div>
+        <div class="mode-card c2" id="cardMulti">
+          <div class="icon">👥</div>
+          <div class="title c-orange">LOCAL 2P</div>
+          <div class="desc">Sensor + Espacio</div>
+          <button class="btn btn-orange" id="btnOpenMulti">COMPETIR</button>
+        </div>
+        <div class="config-panel hidden" id="configMulti">
+          <div class="config-title">⚙ CONFIGURAR CARRERA</div>
+
+          <div class="toggle-row">
+            <div class="toggle-lbl">SIN TIEMPO</div>
+            <div class="toggle-wrap">
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleNoTimeMulti">
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+              <span class="toggle-status" id="noTimeStatusMulti">OFF</span>
+            </div>
+          </div>
+
+          <div class="config-row" id="timeRowMulti">
+            <div class="config-lbl">TIEMPO</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustVal('timeMulti',-5)">−</button>
+              <div class="stepper-val c-orange" id="valTimeMulti">60s</div>
+              <button class="stepper-btn" onclick="adjustVal('timeMulti',+5)">+</button>
+            </div>
+          </div>
+
+          <div class="config-row">
+            <div class="config-lbl">DISTANCIA</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustVal('distMulti',-25)">−</button>
+              <div class="stepper-val c-cyan" id="valDistMulti">1000m</div>
+              <button class="stepper-btn" onclick="adjustVal('distMulti',+25)">+</button>
+            </div>
+          </div>
+
+          <button class="btn-start-race" onclick="startConfiguredGame('multi')">▶ INICIAR CARRERA</button>
+        </div>
+      </div>
+
+    </div>
+
+      <div class="mode-card" style="grid-column: 1 / -1; border-color: rgba(57,255,20,.2);" id="cardVideo">
+        <div class="icon">🏋️</div>
+        <div class="title c-green">MODO ENTRENADOR</div>
+        <div class="desc">Programas de entrenamiento · cadencia · zonas</div>
+        <button class="btn btn-green" id="btnOpenVideo" style="width:100%;">ENTRAR</button>
+      </div>
+
+    <div style="text-align:center; margin-top:8px;">
+      <button id="volverInicio" class="btn btn-cyan" style="width:auto; padding:10px 24px; font-size:.65rem;">← VOLVER</button>
+    </div>
+  </div><!-- /seleccionModo content -->
+  </div>
+
+  <!-- ── ONLINE ── -->
+  <div id="paginaOnline" class="page" style="position:relative; z-index:110;">
+  <div id="onlineNeonL" style="background:linear-gradient(to bottom,transparent,#ff00c8,transparent);box-shadow:0 0 20px #ff00c8,0 0 50px #ff00c855;"></div>
+  <div id="onlineNeonR" style="background:linear-gradient(to bottom,transparent,#ff00c8,transparent);box-shadow:0 0 20px #ff00c8,0 0 50px #ff00c855;"></div>
+    <div style="text-align:center; padding: 20px 0 20px;">
+      <div class="label-sm c-mag" style="margin-bottom:6px;">🌐 MULTIJUGADOR ONLINE</div>
+      <div class="orb" style="font-size:clamp(1.3rem,4vw,1.8rem); color:#e0e8ff;">SALA DE CARRERA</div>
+    </div>
+
+    <div class="panel" style="padding:24px; max-width:460px; margin:0 auto 14px;">
+
+      <div id="opcionesView">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:0;">
+          <button id="btnCrearSala" class="btn btn-mag" style="flex-direction:column; padding:24px 12px; gap:6px;">
+            <span style="font-size:1.4rem;">🏠</span><span>CREAR SALA</span>
+          </button>
+          <button id="btnUnirseSala" class="btn btn-cyan" style="flex-direction:column; padding:24px 12px; gap:6px;">
+            <span style="font-size:1.4rem;">🚪</span><span>UNIRSE</span>
+          </button>
+        </div>
+
+        <!-- Config online — se muestra al presionar Crear Sala -->
+        <div id="configOnline" class="hidden" style="
+          border: 1px solid var(--border); border-top: none;
+          border-radius: 0 0 6px 6px;
+          background: rgba(255,0,200,.03);
+          padding: 18px 16px 16px;
+          animation: slideDown .2s ease;
+        ">
+          <div class="config-title" style="color: var(--magenta); opacity:.6;">⚙ CONFIGURAR SALA</div>
+
+          <div class="toggle-row">
+            <div class="toggle-lbl">SIN TIEMPO</div>
+            <div class="toggle-wrap">
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleNoTimeOnline">
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+              </label>
+              <span class="toggle-status" id="noTimeStatusOnline">OFF</span>
+            </div>
+          </div>
+
+          <div class="config-row" id="timeRowOnline">
+            <div class="config-lbl">TIEMPO</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustVal('timeOnline',-5)">−</button>
+              <div class="stepper-val c-orange" id="valTimeOnline">60s</div>
+              <button class="stepper-btn" onclick="adjustVal('timeOnline',+5)">+</button>
+            </div>
+          </div>
+
+          <div class="config-row">
+            <div class="config-lbl">DISTANCIA</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustVal('distOnline',-25)">−</button>
+              <div class="stepper-val c-cyan" id="valDistOnline">1000m</div>
+              <button class="stepper-btn" onclick="adjustVal('distOnline',+25)">+</button>
+            </div>
+          </div>
+
+          <button class="btn-start-race" id="btnConfirmarCrearSala" style="border-color:var(--magenta); color:var(--magenta); background:rgba(255,0,200,.06); box-shadow: 0 0 12px rgba(255,0,200,.2);">
+            🏠 CREAR SALA CON ESTA CONFIG
+          </button>
+        </div>
+      </div>
+
+      <!-- Crear -->
+      <div id="crearSalaView" class="hidden" style="text-align:center;">
+        <div class="label-sm" style="margin-bottom:12px;">CÓDIGO DE SALA</div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:6px;">
+          <div id="codigoSala">----</div>
+          <button id="btnCopiarCodigo" title="Copiar código" style="
+            background:rgba(0,245,255,.08); border:1px solid rgba(0,245,255,.3);
+            border-radius:4px; color:var(--cyan); cursor:pointer;
+            font-size:1rem; padding:6px 10px; transition:all .15s; line-height:1;
+          ">📋</button>
+        </div>
+        <div class="label-sm" style="font-size:.55rem; margin-bottom:18px;" id="copiado-msg">COMPARTÍ ESTE CÓDIGO CON TU RIVAL</div>
+        <div class="panel" style="padding:14px; margin-bottom:16px;">
+          <div class="wait-pulse" style="font-size:.8rem; color:#3a4570; font-weight:600; letter-spacing:1px;">⏳ ESPERANDO JUGADOR 2...</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button id="btnSimularConexion" class="btn btn-green">DEMO (SIMULAR)</button>
+          <button id="btnCancelarCrear" class="btn btn-ghost">CANCELAR</button>
+        </div>
+      </div>
+
+      <!-- Unirse -->
+      <div id="unirseSalaView" class="hidden">
+        <div class="label-sm" style="margin-bottom:10px;">INGRESÁ EL CÓDIGO</div>
+        <input type="text" id="inputCodigoSala" placeholder="XXXX" maxlength="4" autocomplete="off" spellcheck="false" style="text-transform:uppercase;">
+        <div style="font-size:.55rem; color:#2a3050; letter-spacing:2px; margin-top:6px; font-family:'Orbitron',monospace;">ENTER PARA CONFIRMAR</div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+          <button id="btnConectarSala" class="btn btn-cyan">UNIRSE A LA SALA</button>
+          <button id="btnCancelarUnirse" class="btn btn-ghost">CANCELAR</button>
+        </div>
+      </div>
+
+      <!-- Conectado -->
+      <div id="conectadoView" class="hidden" style="text-align:center;">
+        <div class="c-green wait-pulse" style="font-size:2.2rem; margin-bottom:6px;">📡</div>
+        <div class="orb c-green" style="font-size:1.1rem; margin-bottom:4px;">¡CONECTADO!</div>
+        <div class="label-sm" style="margin-bottom:18px;">SALA: <span id="salaConectada" class="c-cyan">----</span></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+          <div class="panel" style="padding:12px;">
+            <div style="font-size:1.3rem; margin-bottom:4px;">🚴‍♂️</div>
+            <div class="orb c-cyan" style="font-size:.6rem;">JUGADOR 1</div>
+            <div id="p1StatusOnline" class="c-green" style="font-size:.65rem; font-weight:600; margin-top:3px;">CONECTADO</div>
+          </div>
+          <div class="panel" style="padding:12px;">
+            <div style="font-size:1.3rem; margin-bottom:4px;">🚴</div>
+            <div class="orb c-orange" style="font-size:.6rem;">JUGADOR 2</div>
+            <div id="p2StatusOnline" class="c-green" style="font-size:.65rem; font-weight:600; margin-top:3px;">CONECTADO</div>
+          </div>
+        </div>
+        <div id="esperandoRival" style="
+          border:1px solid var(--border); border-radius:6px;
+          padding:14px; text-align:center;
+        ">
+          <div class="wait-pulse" style="font-size:.75rem; color:#3a4570; font-weight:600; letter-spacing:2px; font-family:'Orbitron',monospace;">
+            ⏳ ESPERANDO QUE ARRANQUE LA CARRERA...
+          </div>
+          <div style="font-size:.6rem; color:#2a3050; margin-top:6px; letter-spacing:1px;">La carrera inicia automáticamente</div>
+        </div>
+        <!-- Hidden — kept for legacy game.js references -->
+        <button id="btnIniciarOnline" class="hidden"></button>
+      </div>
+    </div>
+
+    <div style="text-align:center;">
+      <button id="volverDesdeOnline" class="btn btn-ghost" style="width:auto;">← VOLVER</button>
+    </div>
+  </div>
+
+  <!-- ── CARRERA ── -->
+  <div id="juegoCarrera" class="page">
+
+    <div class="hud">
+      <div class="hud-cell">
+        <div id="tiempoRestante" class="hud-val c-orange">60</div>
+        <div class="hud-lbl">TIEMPO</div>
+      </div>
+      <div class="hud-cell">
+        <div class="hud-val" style="color:#e0e8ff; font-size:1rem;">1000m</div>
+        <div class="hud-lbl">META</div>
+      </div>
+      <div class="hud-cell">
+        <div id="modoDisplay" class="hud-val c-mag" style="font-size:.85rem;">IND</div>
+        <div class="hud-lbl">MODO</div>
+      </div>
+    </div>
+
+    <div id="raceTrackWrap">
+      <div class="race-bg"></div>
+
+      <!-- Scenery Left -->
+      <div class="scenery left">
+        <div class="glow-edge r"></div>
+        <div class="scenery-track">
+          <div class="bush" style="left:6px;top:0">🌳</div><div class="bush" style="left:48px;top:80px">🌿</div>
+          <div class="bush" style="left:16px;top:170px">🌲</div><div class="bush" style="left:55px;top:250px">🌳</div>
+          <div class="bush" style="left:8px;top:340px">🌿</div><div class="bush" style="left:42px;top:420px">🌲</div>
+          <div class="bush" style="left:20px;top:510px">🌳</div>
+        </div>
+        <div class="scenery-track t2">
+          <div class="bush" style="left:36px;top:40px">🌿</div><div class="bush" style="left:60px;top:130px">🌲</div>
+          <div class="bush" style="left:12px;top:210px">🌳</div><div class="bush" style="left:52px;top:300px">🌿</div>
+          <div class="bush" style="left:24px;top:390px">🌲</div><div class="bush" style="left:64px;top:470px">🌳</div>
+        </div>
+      </div>
+
+      <!-- Scenery Right -->
+      <div class="scenery right">
+        <div class="glow-edge l"></div>
+        <div class="scenery-track">
+          <div class="bush" style="right:6px;top:30px">🌲</div><div class="bush" style="right:48px;top:110px">🌳</div>
+          <div class="bush" style="right:16px;top:200px">🌿</div><div class="bush" style="right:55px;top:290px">🌲</div>
+          <div class="bush" style="right:8px;top:370px">🌳</div><div class="bush" style="right:42px;top:450px">🌿</div>
+          <div class="bush" style="right:20px;top:540px">🌲</div>
+        </div>
+        <div class="scenery-track t2">
+          <div class="bush" style="right:36px;top:60px">🌳</div><div class="bush" style="right:60px;top:150px">🌿</div>
+          <div class="bush" style="right:12px;top:240px">🌲</div><div class="bush" style="right:52px;top:320px">🌳</div>
+          <div class="bush" style="right:24px;top:410px">🌿</div><div class="bush" style="right:64px;top:490px">🌲</div>
+        </div>
+      </div>
+
+      <!-- Road -->
+      <div class="road" id="roadContainer">
+        <div id="lane1" class="lane">
+          <div class="speed-lines"></div>
+          <div class="road-neon left"></div>
+          <div class="road-neon right"></div>
+          <div id="player1Container" class="player-cont" style="bottom:5%;">
+            <div style="position:relative;display:inline-block;">
+              <div class="speed-streak" style="background:linear-gradient(to bottom,transparent,var(--cyan));"></div>
+              <div class="trail-wrap" id="trail1">
+                <div class="trail-line tl1" style="background:var(--cyan);"></div>
+                <div class="trail-line tl2" style="background:rgba(0,245,255,.5);"></div>
+                <div class="trail-line tl3" style="background:rgba(0,245,255,.5);"></div>
+              </div>
+                                                        <svg id="bike1" class="bike-top-view" viewBox="0 0 48 96" width="40" height="80" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <!-- Front wheel: solo mitad superior (por encima del centro y=20) -->
+                  <clipPath id="clipFrontbike1">
+                    <rect x="0" y="0" width="48" height="20"/>
+                  </clipPath>
+                  <!-- Rear wheel: solo mitad inferior (por debajo del centro y=72) -->
+                  <clipPath id="clipRearbike1">
+                    <rect x="0" y="72" width="48" height="24"/>
+                  </clipPath>
+                </defs>
+
+                <!-- Sombra suelo -->
+                <ellipse cx="24" cy="93" rx="11" ry="3" fill="rgba(0,0,0,.28)"/>
+
+                <!-- RUEDA TRASERA — solo mitad inferior -->
+                <g clip-path="url(#clipRearbike1)">
+                  <ellipse cx="24" cy="72" rx="5" ry="13" fill="#080e1c" stroke="#00f5ff" stroke-width="2.2"/>
+                  <ellipse cx="24" cy="72" rx="3" ry="8"  fill="none" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <line x1="24" y1="60" x2="24" y2="84" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <line x1="18" y1="65" x2="30" y2="79" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <line x1="30" y1="65" x2="18" y2="79" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <circle cx="24" cy="72" r="2.5" fill="#00f5ff" opacity=".6"/>
+                </g>
+
+                <!-- VAINAS traseras (axle → pedalier) -->
+                <line x1="20" y1="71" x2="21" y2="57" stroke="#00c8ff" stroke-width="2" stroke-linecap="round"/>
+                <line x1="28" y1="71" x2="27" y2="57" stroke="#00c8ff" stroke-width="2" stroke-linecap="round"/>
+
+                <!-- SILLÍN -->
+                <ellipse cx="24" cy="58" rx="5" ry="3" fill="#0d1a2a" stroke="#00c8ff" stroke-width="1.2"/>
+
+                <!-- TUBO SUPERIOR / INFERIOR del cuadro -->
+                <line x1="21" y1="57" x2="21" y2="36" stroke="#00c8ff" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="27" y1="57" x2="27" y2="36" stroke="#00c8ff" stroke-width="2.5" stroke-linecap="round"/>
+
+                <!-- HORQUILLA -->
+                <line x1="21" y1="36" x2="20" y2="24" stroke="rgba(0,245,255,.28)" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="27" y1="36" x2="28" y2="24" stroke="rgba(0,245,255,.28)" stroke-width="1.8" stroke-linecap="round"/>
+
+                <!-- TORSO DEL CICLISTA -->
+                <ellipse cx="24" cy="48" rx="7" ry="10" fill="#111e2e" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+
+                <!-- BRAZOS -->
+                <line x1="17" y1="44" x2="13" y2="35" stroke="#111e2e" stroke-width="3.5" stroke-linecap="round"/>
+                <line x1="31" y1="44" x2="35" y2="35" stroke="#111e2e" stroke-width="3.5" stroke-linecap="round"/>
+
+                <!-- CASCO -->
+                <circle cx="24" cy="37" r="7" fill="#0d2a40" stroke="#00f5ff" stroke-width="1.6"/>
+                <ellipse cx="24" cy="35" rx="3.5" ry="2" fill="rgba(0,245,255,.22)"/>
+                <line x1="19" y1="34" x2="29" y2="34" stroke="rgba(0,245,255,.28)" stroke-width=".8"/>
+                <line x1="18" y1="37" x2="30" y2="37" stroke="rgba(0,245,255,.28)" stroke-width=".8"/>
+
+                <!-- MANUBRIO — tapa la unión con la rueda delantera -->
+                <line x1="11" y1="32" x2="37" y2="32" stroke="#00c8ff" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="11" cy="32" r="2.2" fill="#00f5ff" opacity=".7"/>
+                <circle cx="37" cy="32" r="2.2" fill="#00f5ff" opacity=".7"/>
+
+                <!-- RUEDA DELANTERA — solo mitad superior -->
+                <g clip-path="url(#clipFrontbike1)">
+                  <ellipse cx="24" cy="20" rx="5" ry="13" fill="#080e1c" stroke="#00f5ff" stroke-width="2.2"/>
+                  <ellipse cx="24" cy="20" rx="3" ry="8"  fill="none" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <line x1="24" y1="8"  x2="24" y2="32" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <line x1="18" y1="13" x2="30" y2="27" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <line x1="30" y1="13" x2="18" y2="27" stroke="rgba(0,245,255,.28)" stroke-width="1"/>
+                  <circle cx="24" cy="20" r="2.5" fill="#00f5ff" opacity=".6"/>
+                </g>
+
+                <!-- Glow adelante -->
+                <ellipse cx="24" cy="5" rx="6" ry="2" fill="rgba(0,245,255,.22)"/>
+              </svg>
+            </div>
+            <div class="player-badge" style="background:rgba(0,245,255,.15);color:var(--cyan);border:1px solid rgba(0,245,255,.3);">J1</div>
+            <div class="player-stats c-cyan"><span id="p1Speed">0 km/h</span> · <span id="p1Dist">0m</span></div>
+          </div>
+        </div>
+
+        <div id="lane2" class="lane hidden">
+          <div class="speed-lines"></div>
+          <div id="player2Container" class="player-cont" style="bottom:5%;">
+            <div style="position:relative;display:inline-block;">
+              <div class="speed-streak" style="background:linear-gradient(to bottom,transparent,var(--orange));"></div>
+              <div class="trail-wrap" id="trail2">
+                <div class="trail-line tl1" style="background:var(--orange);"></div>
+                <div class="trail-line tl2" style="background:rgba(255,106,0,.5);"></div>
+                <div class="trail-line tl3" style="background:rgba(255,106,0,.5);"></div>
+              </div>
+                                                        <svg id="bike2" class="bike-top-view" viewBox="0 0 48 96" width="40" height="80" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <!-- Front wheel: solo mitad superior (por encima del centro y=20) -->
+                  <clipPath id="clipFrontbike2">
+                    <rect x="0" y="0" width="48" height="20"/>
+                  </clipPath>
+                  <!-- Rear wheel: solo mitad inferior (por debajo del centro y=72) -->
+                  <clipPath id="clipRearbike2">
+                    <rect x="0" y="72" width="48" height="24"/>
+                  </clipPath>
+                </defs>
+
+                <!-- Sombra suelo -->
+                <ellipse cx="24" cy="93" rx="11" ry="3" fill="rgba(0,0,0,.28)"/>
+
+                <!-- RUEDA TRASERA — solo mitad inferior -->
+                <g clip-path="url(#clipRearbike2)">
+                  <ellipse cx="24" cy="72" rx="5" ry="13" fill="#080e1c" stroke="#ff6a00" stroke-width="2.2"/>
+                  <ellipse cx="24" cy="72" rx="3" ry="8"  fill="none" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <line x1="24" y1="60" x2="24" y2="84" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <line x1="18" y1="65" x2="30" y2="79" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <line x1="30" y1="65" x2="18" y2="79" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <circle cx="24" cy="72" r="2.5" fill="#ff6a00" opacity=".6"/>
+                </g>
+
+                <!-- VAINAS traseras (axle → pedalier) -->
+                <line x1="20" y1="71" x2="21" y2="57" stroke="#d05000" stroke-width="2" stroke-linecap="round"/>
+                <line x1="28" y1="71" x2="27" y2="57" stroke="#d05000" stroke-width="2" stroke-linecap="round"/>
+
+                <!-- SILLÍN -->
+                <ellipse cx="24" cy="58" rx="5" ry="3" fill="#0d1a2a" stroke="#d05000" stroke-width="1.2"/>
+
+                <!-- TUBO SUPERIOR / INFERIOR del cuadro -->
+                <line x1="21" y1="57" x2="21" y2="36" stroke="#d05000" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="27" y1="57" x2="27" y2="36" stroke="#d05000" stroke-width="2.5" stroke-linecap="round"/>
+
+                <!-- HORQUILLA -->
+                <line x1="21" y1="36" x2="20" y2="24" stroke="rgba(255,106,0,.28)" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="27" y1="36" x2="28" y2="24" stroke="rgba(255,106,0,.28)" stroke-width="1.8" stroke-linecap="round"/>
+
+                <!-- TORSO DEL CICLISTA -->
+                <ellipse cx="24" cy="48" rx="7" ry="10" fill="#111e2e" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+
+                <!-- BRAZOS -->
+                <line x1="17" y1="44" x2="13" y2="35" stroke="#111e2e" stroke-width="3.5" stroke-linecap="round"/>
+                <line x1="31" y1="44" x2="35" y2="35" stroke="#111e2e" stroke-width="3.5" stroke-linecap="round"/>
+
+                <!-- CASCO -->
+                <circle cx="24" cy="37" r="7" fill="#0d2a40" stroke="#ff6a00" stroke-width="1.6"/>
+                <ellipse cx="24" cy="35" rx="3.5" ry="2" fill="rgba(255,106,0,.22)"/>
+                <line x1="19" y1="34" x2="29" y2="34" stroke="rgba(255,106,0,.28)" stroke-width=".8"/>
+                <line x1="18" y1="37" x2="30" y2="37" stroke="rgba(255,106,0,.28)" stroke-width=".8"/>
+
+                <!-- MANUBRIO — tapa la unión con la rueda delantera -->
+                <line x1="11" y1="32" x2="37" y2="32" stroke="#d05000" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="11" cy="32" r="2.2" fill="#ff6a00" opacity=".7"/>
+                <circle cx="37" cy="32" r="2.2" fill="#ff6a00" opacity=".7"/>
+
+                <!-- RUEDA DELANTERA — solo mitad superior -->
+                <g clip-path="url(#clipFrontbike2)">
+                  <ellipse cx="24" cy="20" rx="5" ry="13" fill="#080e1c" stroke="#ff6a00" stroke-width="2.2"/>
+                  <ellipse cx="24" cy="20" rx="3" ry="8"  fill="none" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <line x1="24" y1="8"  x2="24" y2="32" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <line x1="18" y1="13" x2="30" y2="27" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <line x1="30" y1="13" x2="18" y2="27" stroke="rgba(255,106,0,.28)" stroke-width="1"/>
+                  <circle cx="24" cy="20" r="2.5" fill="#ff6a00" opacity=".6"/>
+                </g>
+
+                <!-- Glow adelante -->
+                <ellipse cx="24" cy="5" rx="6" ry="2" fill="rgba(255,106,0,.22)"/>
+              </svg>
+            </div>
+            <div class="player-badge" style="background:rgba(255,106,0,.15);color:var(--orange);border:1px solid rgba(255,106,0,.3);">J2</div>
+            <div class="player-stats c-orange"><span id="p2Speed">0 km/h</span> · <span id="p2Dist">0m</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="finish-line"><span>META — FINISH</span></div>
+    </div>
+
+    <!-- Velocity row -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;" id="velRow">
+      <div class="hud-cell" style="padding:6px 10px;">
+        <span class="label-sm">J1 VEL</span>
+        <span id="p1SpeedHud" class="orb c-cyan" style="font-size:.9rem; margin-left:6px;">0 km/h</span>
+      </div>
+      <div class="hud-cell" style="padding:6px 10px;">
+        <span class="label-sm">J2 VEL</span>
+        <span id="p2SpeedHud" class="orb c-orange" style="font-size:.9rem; margin-left:6px;">0 km/h</span>
+      </div>
+    </div>
+
+    <div class="progress-wrap">
+      <div id="progressP1" class="progress-row">
+        <div class="progress-name c-cyan">J1</div>
+        <div class="progress-bar"><div id="p1ProgressFill" class="progress-fill pf-1" style="width:0%"></div></div>
+        <div id="p1Percent" class="progress-pct c-cyan">0%</div>
+      </div>
+      <div id="progressP2" class="progress-row hidden">
+        <div class="progress-name c-orange">J2</div>
+        <div class="progress-bar"><div id="p2ProgressFill" class="progress-fill pf-2" style="width:0%"></div></div>
+        <div id="p2Percent" class="progress-pct c-orange">0%</div>
+      </div>
+    </div>
+
+    <div id="gameControls" style="display:flex; gap:10px; margin-top:10px;">
+      <button id="btnP1Click" class="game-btn game-btn-p1">🚴‍♂️ PEDALEAR J1</button>
+      <button id="btnP2Click" class="game-btn game-btn-p2 hidden">🚴 PEDALEAR J2</button>
+    </div>
+  </div>
+
+  <!-- ── RESULTADOS ── -->
+  <div id="resultados" class="page">
+    <div class="results-panel">
+      <div class="results-header">
+        <span class="winner-icon">🏆</span>
+        <div class="label-sm" style="margin-bottom:6px;">RESULTADO FINAL</div>
+        <div id="winnerText" class="orb c-green" style="font-size:clamp(1rem,4vw,1.4rem);"></div>
+      </div>
+      <div id="resultsTable" style="display:grid; grid-template-columns:1fr 1fr;"></div>
+      <div style="padding:16px; display:flex; flex-direction:column; gap:10px; border-top:1px solid var(--border);">
+        <button id="btnPlayAgain" class="btn btn-green">JUGAR DE NUEVO</button>
+        <button id="btnBackHome" class="btn btn-ghost">VOLVER AL INICIO</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- ════════ TRAINER MENU ════════ -->
+<div id="trainerMenu" class="page">
+
+  <!-- Fondo del estudio -->
+  <div id="trainerMenuBg"></div>
+
+  <!-- Luces neón laterales -->
+  <div id="trainerNeonLeft"></div>
+  <div id="trainerNeonRight"></div>
+
+  <!-- Título -->
+  <div id="trainerMenuTitle">
+    <div class="label-sm" style="color:rgba(200,150,255,.6); margin-bottom:6px; letter-spacing:4px;">MODO ENTRENAMIENTO</div>
+    <div class="orb" style="font-size:clamp(1.2rem,4vw,1.8rem); color:#fff; text-shadow:0 0 20px rgba(150,80,255,.5);">ELEGÍ TU PROGRAMA</div>
+  </div>
+
+  <!-- Carrusel -->
+  <div id="trainerCarousel">
+    <button class="carousel-arrow" id="carouselUp">▲</button>
+    <div id="carouselWindow" style="width:100%; min-height:200px;"></div>
+    <button class="carousel-arrow" id="carouselDown">▼</button>
+    <div id="carouselDots"></div>
+  </div>
+
+  <!-- Volver -->
+  <button id="btnVolverDesdeTrainer" style="
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+    font-family:'Orbitron',monospace; font-size:.55rem; font-weight:700;
+    letter-spacing:2px; text-transform:uppercase; z-index:5;
+    border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.5);
+    color:rgba(255,255,255,.4); padding:8px 20px; border-radius:4px; cursor:pointer;
+    transition:all .2s;
+  ">← VOLVER</button>
+
+</div>
+
+<!-- ════════ TRAINER SESSION ════════ -->
+<div id="trainerSession" class="page">
+<div style="position:fixed;inset:0;overflow:hidden;background:#06040f;">
+
+  <!-- ══ FONDO: nuevo background del entrenador ══ -->
+  <img src="public/bg-trainer.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:0;opacity:1;">
+
+  <!-- Overlay oscuro bordes -->
+  <div style="position:absolute;inset:0;z-index:1;
+    background:radial-gradient(ellipse 70% 80% at 50% 55%, transparent 30%, rgba(4,2,12,.85) 100%);
+    pointer-events:none;"></div>
+
+  <!-- Luces neón laterales -->
+  <div id="trSessionNeonL" style="position:absolute;top:0;bottom:0;left:0;width:8px;z-index:2;transition:background 1s,box-shadow 1s;
+    background:linear-gradient(to bottom,transparent,#9b59b6,transparent);
+    box-shadow:0 0 24px #9b59b6,0 0 60px #9b59b655;"></div>
+  <div id="trSessionNeonR" style="position:absolute;top:0;bottom:0;right:0;width:8px;z-index:2;transition:background 1s,box-shadow 1s;
+    background:linear-gradient(to bottom,transparent,#3b82f6,transparent);
+    box-shadow:0 0 24px #3b82f6,0 0 60px #3b82f655;"></div>
+
+  <!-- ══ LAYOUT PRINCIPAL RESPONSIVE ══ -->
+  <div style="position:relative;z-index:10;width:100%;height:100%;display:flex;flex-direction:column;">
+
+    <!-- TOP BAR — más grande, selector de género más visible -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:clamp(8px,2vh,16px) clamp(12px,2.5vw,24px);flex-shrink:0;background:rgba(0,0,0,.55);border-bottom:1px solid rgba(150,80,255,.25);">
+      <div>
+        <div id="trProgramTitle" style="font-family:'Orbitron',monospace;font-size:clamp(.5rem,1vw,.8rem);font-weight:700;letter-spacing:3px;color:rgba(200,150,255,.85);">ENTRENAMIENTO</div>
+        <div id="trZoneDisplay" style="font-family:'Orbitron',monospace;font-size:clamp(.85rem,2.2vw,1.35rem);font-weight:900;letter-spacing:2px;color:#fff;line-height:1.2;text-shadow:0 0 12px currentColor;">—</div>
+      </div>
+
+      <!-- Selector de género — más grande y claro -->
+      <div style="display:flex;gap:clamp(8px,1.5vw,16px);align-items:center;">
+        <div id="trPositionDisplay" style="font-family:'Orbitron',monospace;font-size:clamp(.5rem,1vw,.75rem);letter-spacing:2px;color:rgba(255,255,255,.6);margin-right:6px;">—</div>
+
+        <div style="display:flex;gap:6px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:4px;">
+          <button id="btnSpriteM" onclick="selectSprite('m')" style="
+            font-family:'Orbitron',monospace;font-size:clamp(.6rem,1.2vw,.85rem);font-weight:700;
+            border:1px solid rgba(0,245,255,.6);background:rgba(0,245,255,.15);color:#00f5ff;
+            padding:clamp(6px,1vh,10px) clamp(12px,2vw,18px);border-radius:6px;cursor:pointer;
+            box-shadow:0 0 10px rgba(0,245,255,.3);transition:all .2s;">♂ HOMBRE</button>
+          <button id="btnSpriteF" onclick="selectSprite('f')" style="
+            font-family:'Orbitron',monospace;font-size:clamp(.6rem,1.2vw,.85rem);font-weight:700;
+            border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.4);color:rgba(255,255,255,.5);
+            padding:clamp(6px,1vh,10px) clamp(12px,2vw,18px);border-radius:6px;cursor:pointer;
+            transition:all .2s;">♀ MUJER</button>
+        </div>
+
+        <button onclick="stopTrainer()" style="font-family:'Orbitron',monospace;font-size:clamp(.5rem,1vw,.7rem);font-weight:700;letter-spacing:1px;border:1px solid rgba(255,60,60,.4);background:rgba(255,30,30,.1);color:rgba(255,80,80,.85);padding:clamp(6px,1vh,10px) clamp(12px,2vw,16px);border-radius:6px;cursor:pointer;margin-left:4px;">■ PARAR</button>
+      </div>
+    </div>
+
+    <!-- MEDIO: paneles + sprite + mensaje del entrenador -->
+    <div style="flex:1;display:grid;grid-template-columns:clamp(110px,15vw,200px) 1fr clamp(110px,15vw,200px);gap:0;align-items:center;padding:0 clamp(6px,1vw,14px);min-height:0;position:relative;">
+
+      <!-- IZQUIERDA -->
+      <div style="display:flex;flex-direction:column;gap:clamp(8px,1.5vh,16px);align-items:flex-start;">
+        <div style="background:rgba(4,2,16,.85);border:1px solid rgba(100,60,220,.4);border-radius:8px;padding:clamp(8px,1.5vh,16px) clamp(10px,1.5vw,20px);width:100%;box-sizing:border-box;">
+          <div style="font-family:'Orbitron',monospace;font-size:clamp(.38rem,.7vw,.55rem);font-weight:700;letter-spacing:3px;color:rgba(150,100,255,.8);margin-bottom:4px;">CADENCIA</div>
+          <div id="trHudRPM" style="font-family:'Orbitron',monospace;font-weight:900;font-size:clamp(1.8rem,4vw,3.5rem);color:#fff;line-height:1;text-shadow:0 0 16px rgba(150,100,255,.6);">—</div>
+          <div style="font-family:'Orbitron',monospace;font-size:clamp(.35rem,.6vw,.5rem);color:rgba(255,255,255,.4);letter-spacing:2px;margin-top:2px;">RPM</div>
+        </div>
+      </div>
+
+      <!-- CENTRO: Sprite + mensaje del entrenador (encima) -->
+      <div style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;overflow:hidden;gap:clamp(6px,1.2vh,12px);">
+
+        <!-- Burbuja de mensaje — simula que el entrenador habla -->
+        <div id="trMessageBubble" style="
+          position:relative; z-index:6;
+          max-width:90%;
+          background:rgba(10,4,28,.92);
+          border:1px solid rgba(150,100,255,.5);
+          border-radius:14px;
+          padding:clamp(8px,1.4vh,14px) clamp(14px,2.2vw,22px);
+          box-shadow:0 0 18px rgba(150,80,255,.3);
+          display:flex; align-items:center; gap:8px;
+          text-align:center;
+        ">
+          <span style="font-size:clamp(.8rem,1.6vw,1.2rem);flex-shrink:0;">🏋️</span>
+          <div id="trMessage" style="font-family:'Rajdhani',sans-serif;font-size:clamp(.65rem,1.3vw,.95rem);font-weight:600;color:#e0d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+          <!-- Colita de la burbuja -->
+          <div style="position:absolute;bottom:-7px;left:50%;transform:translateX(-50%) rotate(45deg);width:12px;height:12px;background:rgba(10,4,28,.92);border-right:1px solid rgba(150,100,255,.5);border-bottom:1px solid rgba(150,100,255,.5);"></div>
+        </div>
+
+        <!-- Sprite — tamaño calculado por JS para evitar bug de clamp anidado -->
+        <div id="trainerSpriteWrap" style="position:relative;display:flex;align-items:center;justify-content:center;flex:1;width:100%;min-height:0;">
+          <div id="trainerSprite" style="
+            display:block;
+            background-repeat:no-repeat;
+            background-position:0 0;
+            filter:drop-shadow(0 0 18px rgba(150,80,255,.55));
+          "></div>
+          <div id="trainerZoneOverlay" style="position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0;transition:opacity .6s;"></div>
+          <div id="trPauseIndicator" style="position:absolute;top:6%;left:50%;transform:translateX(-50%);z-index:4;
+            font-family:'Orbitron',monospace;font-size:clamp(.5rem,.9vw,.75rem);font-weight:700;letter-spacing:2px;
+            color:#ff6a00;text-shadow:0 0 12px #ff6a00;opacity:0;transition:opacity .3s;
+            background:rgba(0,0,0,.85);padding:clamp(5px,.8vh,9px) clamp(10px,1.5vw,18px);border-radius:99px;
+            border:1px solid rgba(255,106,0,.4);white-space:nowrap;">⏸ PEDALEA PARA AVANZAR</div>
+        </div>
+      </div>
+
+      <!-- DERECHA -->
+      <div style="display:flex;flex-direction:column;gap:clamp(8px,1.5vh,16px);align-items:flex-end;">
+        <div style="background:rgba(4,2,16,.85);border:1px solid rgba(100,60,220,.4);border-radius:8px;padding:clamp(8px,1.5vh,16px) clamp(10px,1.5vw,20px);width:100%;box-sizing:border-box;text-align:right;">
+          <div style="font-family:'Orbitron',monospace;font-size:clamp(.38rem,.7vw,.55rem);font-weight:700;letter-spacing:3px;color:rgba(150,100,255,.8);margin-bottom:4px;">RESISTENCIA</div>
+          <div id="trHudResVal" style="font-family:'Orbitron',monospace;font-weight:900;font-size:clamp(1.8rem,4vw,3.5rem);color:#fff;line-height:1;text-shadow:0 0 16px rgba(150,100,255,.6);">—</div>
+          <div style="font-family:'Orbitron',monospace;font-size:clamp(.35rem,.6vw,.5rem);color:rgba(255,255,255,.4);letter-spacing:2px;margin-top:2px;">/10</div>
+        </div>
+        <div style="background:rgba(4,2,16,.85);border:1px solid rgba(100,60,220,.4);border-radius:8px;padding:clamp(8px,1.5vh,16px) clamp(10px,1.5vw,20px);width:100%;box-sizing:border-box;text-align:right;">
+          <div style="font-family:'Orbitron',monospace;font-size:clamp(.38rem,.7vw,.55rem);font-weight:700;letter-spacing:3px;color:rgba(150,100,255,.8);margin-bottom:4px;">TIEMPO</div>
+          <div id="trHudTimeVal" style="font-family:'Orbitron',monospace;font-weight:900;font-size:clamp(1.5rem,3.5vw,3rem);color:#fff;line-height:1;text-shadow:0 0 16px rgba(150,100,255,.6);">00:00</div>
+          <div style="font-family:'Orbitron',monospace;font-size:clamp(.35rem,.6vw,.5rem);color:rgba(255,255,255,.4);letter-spacing:2px;margin-top:2px;">RESTANTE</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM BAR — barras de zona COMPLETAS, centradas, mostrando toda la rutina -->
+    <div style="flex-shrink:0;background:rgba(0,0,0,.85);border-top:1px solid rgba(150,80,255,.25);padding:clamp(8px,1.2vh,12px) clamp(10px,2vw,18px) clamp(10px,1.5vh,14px);">
+
+      <!-- Objetivo + cambio -->
+      <div style="display:flex;align-items:center;gap:clamp(6px,1vw,12px);margin-bottom:clamp(5px,1vh,9px);">
+        <div style="font-family:'Orbitron',monospace;font-size:clamp(.4rem,.75vw,.58rem);color:rgba(255,255,255,.4);letter-spacing:2px;flex-shrink:0;">OBJETIVO</div>
+        <div id="trCadTarget" style="font-family:'Orbitron',monospace;font-size:clamp(.7rem,1.5vw,1.05rem);font-weight:700;color:#fff;flex-shrink:0;">—</div>
+        <div style="flex:1;"></div>
+        <div style="font-family:'Orbitron',monospace;font-size:clamp(.4rem,.75vw,.58rem);color:rgba(255,255,255,.4);letter-spacing:2px;flex-shrink:0;">CAMBIO EN</div>
+        <div id="trBlockTime" style="font-family:'Orbitron',monospace;font-size:clamp(.7rem,1.5vw,1.05rem);font-weight:700;color:#ff6a00;flex-shrink:0;min-width:46px;text-align:right;">00:00</div>
+      </div>
+
+      <!-- RUTINA COMPLETA — todos los bloques de la zona visibles, centrado -->
+      <div style="margin-bottom:clamp(6px,1vh,10px);">
+        <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-family:'Orbitron',monospace;font-size:clamp(.38rem,.7vw,.5rem);color:rgba(255,255,255,.4);letter-spacing:2px;">RUTINA COMPLETA</span>
+        </div>
+        <div id="trHudZonaBars" style="display:flex;gap:2px;width:100%;height:clamp(16px,2.6vh,26px);"></div>
+      </div>
+
+      <!-- Mensaje (oculto aquí, se muestra arriba en burbuja) + chart + pedalear -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:clamp(8px,1.5vw,16px);">
+        <div id="trChart" style="width:clamp(60px,8vw,100px);height:clamp(32px,4.5vh,48px);background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:3px;display:flex;align-items:flex-end;gap:1px;overflow:hidden;flex-shrink:0;"></div>
+        <button id="btnTrainerPedal" style="
+          height:clamp(46px,6vh,64px);width:clamp(80px,9vw,110px);flex-shrink:0;
+          font-family:'Orbitron',monospace;font-weight:900;font-size:clamp(.45rem,.85vw,.65rem);
+          letter-spacing:1px;text-transform:uppercase;
+          background:rgba(150,80,255,.15);border:2px solid rgba(150,80,255,.7);
+          color:#c084fc;border-radius:7px;cursor:pointer;
+          box-shadow:0 0 16px rgba(150,80,255,.3);
+          touch-action:manipulation;line-height:1.4;">🚴<br>PEDALEAR</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- IDs ocultos --><!-- IDs ocultos -->
+<div style="display:none;">
+  <div id="trRPM"></div><div id="trZone"></div><div id="trEffort"></div>
+  <div id="trPosition"></div><div id="trTotalTime"></div><div id="trRPMFeedback"></div>
+  <div id="trHudResVal"></div><div id="trHudZonaLbl"></div>
+  <div id="trainerFloatMsg"><span id="trainerFloatText"></span></div>
+</div>
+</div>
+
+<!-- ════════ TRAINER RESULTS ════════ -->
+<div id="trainerResults" class="page">
+  <div style="max-width:500px; margin:0 auto; padding:20px 16px;">
+    <div class="panel" style="padding:24px;">
+      <div id="trainerResultsContent"></div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+        <button onclick="showPage('trainerMenu')" class="btn btn-green">OTRO PROGRAMA</button>
+        <button onclick="showPage('inicio')" class="btn btn-ghost">VOLVER AL INICIO</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ VIDEO MODE ════════ -->
+<div id="videoModeWrap">
+  <video id="raceVideo" src="" loop playsinline muted preload="auto"></video>
+
+  <!-- HUD top -->
+  <div class="video-hud">
+    <div class="video-hud-item">
+      <div id="vTimerDisplay" class="video-hud-val c-orange">60</div>
+      <div class="video-hud-lbl">TIEMPO</div>
+    </div>
+    <div class="video-hud-item" style="text-align:center;">
+      <div class="video-hud-val" style="font-size:1rem; color:rgba(255,255,255,.7);">🚴 VIDEO MODE</div>
+      <div class="video-hud-lbl" id="vModoDisplay">INDIVIDUAL</div>
+    </div>
+    <div class="video-hud-item" style="text-align:right;">
+      <div id="vSpeedDisplay" class="video-hud-val c-green">0</div>
+      <div class="video-hud-lbl">KM/H</div>
+    </div>
+  </div>
+
+  <!-- Speed bar lateral -->
+  <div class="video-speed-bar">
+    <div class="video-speed-fill" id="vSpeedFill" style="height:0%"></div>
+  </div>
+  <div class="video-speed-lbl">VEL</div>
+
+  <!-- Progress bottom -->
+  <div class="video-progress-wrap">
+    <div class="video-progress-bar">
+      <div class="video-progress-fill" id="vProgressFill" style="width:0%"></div>
+    </div>
+    <div class="video-dist-row">
+      <div id="vDistDisplay" class="video-dist-val">0m</div>
+      <div class="video-dist-meta" id="vMetaDisplay">META: 1000m</div>
+    </div>
+  </div>
+
+  <!-- Paused overlay -->
+  <div class="video-paused-msg" id="vPausedMsg">⏸ PEDALEA PARA AVANZAR</div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="online.js"></script>
+<script src="trainer.js"></script>
+<script src="game.js"></script>
+
+<script>
+// ── MENU LOGIC ──
+(function() {
+  const menuScreen = document.getElementById('menuScreen')
+  const menuDetect = document.getElementById('menuDetectarSensor')
+  const menuLed    = document.getElementById('menuLedDot')
+  const menuEstado = document.getElementById('menuEstadoConexion')
+  const origLed    = document.getElementById('ledDot')
+
+  // Mirror sensor status
+  window.updateConnectionStatus = function(msg, connected) {
+    const el = document.getElementById('estadoConexion')
+    if (el) el.textContent = msg
+    menuEstado.textContent = msg
+    if (connected) {
+      menuLed.classList.add('on')
+      document.getElementById('menuConectarSensor').style.display = 'none'
+      document.getElementById('sensorExpandPanel').style.maxHeight = '0'
+      document.getElementById('sensorConnectedBar').style.display = 'flex'
+    }
+  }
+
+  // Mirror LED flash
+  new MutationObserver(() => {
+    origLed.classList.contains('on') ? menuLed.classList.add('on') : menuLed.classList.remove('on')
+  }).observe(origLed, { attributes: true, attributeFilter: ['class'] })
+
+  menuDetect.addEventListener('click', () => document.getElementById('detectarNodeMCU').click())
+
+  // ── TOGGLE SENSOR PANEL (item 03) ──
+  document.getElementById('menuConectarSensor')?.addEventListener('click', () => {
+    const panel = document.getElementById('sensorExpandPanel')
+    const isOpen = panel.style.maxHeight !== '0px' && panel.style.maxHeight !== ''
+    if (isOpen) {
+      panel.style.maxHeight = '0px'
+      panel.style.opacity = '0'
+    } else {
+      panel.style.maxHeight = '260px'
+      panel.style.opacity = '1'
+    }
+  })
+
+  // ── SENSOR TABS ──
+  document.getElementById('tabWiFi')?.addEventListener('click', () => {
+    document.getElementById('tabWiFi').classList.add('active-tab')
+    document.getElementById('tabUSB').classList.remove('active-tab')
+    document.getElementById('panelWiFi').classList.add('active')
+    document.getElementById('panelUSB').classList.remove('active')
+  })
+  document.getElementById('tabUSB')?.addEventListener('click', () => {
+    document.getElementById('tabUSB').classList.add('active-tab')
+    document.getElementById('tabWiFi').classList.remove('active-tab')
+    document.getElementById('panelUSB').classList.add('active')
+    document.getElementById('panelWiFi').classList.remove('active')
+  })
+
+  // ── SENSOR WiFi via Firebase ──
+
+  // Restaurar DEVICE_ID guardado — sin abrir el panel
+  const savedId = localStorage.getItem('bikeDeviceId')
+  if (savedId) {
+    const inp = document.getElementById('deviceIdInput')
+    if (inp) inp.value = savedId
+  }
+
+  // Enter en device ID input
+  document.getElementById('deviceIdInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') connectSensorWifi()
+  })
+  document.getElementById('btnConectarSensor')?.addEventListener('click', connectSensorWifi)
+
+  function connectSensorWifi() {
+    const deviceId = document.getElementById('deviceIdInput')?.value.trim().toLowerCase()
+    if (!deviceId) { menuEstado.textContent = 'Ingresá el ID del sensor'; return }
+
+    const btn = document.getElementById('btnConectarSensor')
+    btn.textContent = 'BUSCANDO...'
+    btn.disabled = true
+    menuEstado.textContent = 'Buscando sensor...'
+
+    // Verificar que el dispositivo esté online en Firebase
+    const sensorRef = firebase.database().ref('sensors/' + deviceId)
+
+    sensorRef.once('value').then(snap => {
+      if (!snap.exists()) {
+        menuEstado.textContent = '✗ Sensor no encontrado — verificá el ID'
+        btn.textContent = 'CONECTAR'
+        btn.disabled = false
+        return
+      }
+
+      const data = snap.val()
+      if (data.status !== 'online') {
+        menuEstado.textContent = '✗ Sensor offline — verificá que esté encendido'
+        btn.textContent = 'CONECTAR'
+        btn.disabled = false
+        return
+      }
+
+      // ✓ Sensor encontrado y online
+      window._sensorDeviceId = deviceId
+      localStorage.setItem('bikeDeviceId', deviceId)
+
+      // Ocultar item 03 y mostrar barra conectado
+      document.getElementById('menuConectarSensor').style.display = 'none'
+      document.getElementById('sensorExpandPanel').style.maxHeight = '0'
+      document.getElementById('sensorConnectedBar').style.display = 'flex'
+      const lbl = document.getElementById('sensorDeviceLabel')
+      if (lbl) lbl.textContent = deviceId
+      menuLed.classList.add('on')
+      window.updateConnectionStatus('Sensor WiFi · ' + deviceId, true)
+
+      console.log('[SENSOR] Conectado:', deviceId, data)
+
+      // Escuchar clicks en tiempo real
+      listenSensorClicks(deviceId)
+
+    }).catch(err => {
+      menuEstado.textContent = '✗ Error de conexión'
+      btn.textContent = 'CONECTAR'
+      btn.disabled = false
+      console.error('[SENSOR] Error:', err)
+    })
+  }
+
+  function listenSensorClicks(deviceId) {
+    let lastClick = null
+
+    firebase.database().ref('sensors/' + deviceId + '/lastClick')
+      .on('value', snap => {
+        const val = snap.val()
+        if (val === null) return
+        if (lastClick === null) { lastClick = val; return } // ignorar valor inicial
+        if (val !== lastClick) {
+          lastClick = val
+          console.log('[SENSOR] Click recibido de Firebase!')
+          if (typeof window.handleWifiClick === 'function') {
+            window.handleWifiClick()
+          }
+        }
+      })
+
+    console.log('[SENSOR] Escuchando clicks de', deviceId)
+  }
+
+  // Hover active
+  document.querySelectorAll('.menu-item').forEach(item => {
+    item.addEventListener('mouseenter', () => {
+      document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'))
+      item.classList.add('active')
+    })
+  })
+
+  function hideMenu() { menuScreen.classList.add('hidden') }
+
+  document.getElementById('menuArcade').addEventListener('click', () => { hideMenu(); window.showPage('seleccionModo') })
+  document.getElementById('menuMultiplayer').addEventListener('click', () => { hideMenu(); window.showPage('paginaOnline') })
+  document.getElementById('menuEntrenamiento').addEventListener('click', () => { hideMenu(); window.showPage('trainerMenu') })
+  document.getElementById('menuSalir').addEventListener('click', () => {
+    menuScreen.style.transition = 'opacity .5s'
+    menuScreen.style.opacity = '0'
+    setTimeout(() => {
+      document.body.innerHTML = '<div style="background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:rgba(255,255,255,.15);font-size:.9rem;letter-spacing:4px;">CERRANDO...</div>'
+      setTimeout(() => window.close(), 800)
+    }, 500)
+  })
+
+  // Override showPage to show/hide menu
+  const origShowPage = window.showPage
+  window.showPage = function(pageId) {
+    origShowPage(pageId)
+    pageId === 'inicio' ? menuScreen.classList.remove('hidden') : menuScreen.classList.add('hidden')
+  }
+})()
+
+// ── RACE CONFIG ──
+const raceConfig = {
+  timeSingle: 60, distSingle: 1000, noTimeSingle: false,
+  timeMulti:  60, distMulti:  1000, noTimeMulti:  false,
+  timeOnline: 60, distOnline: 1000, noTimeOnline: false,
+}
+
+function adjustVal(key, delta) {
+  const isTime = key.startsWith('time')
+  const min = isTime ? 5 : 25
+  const max = isTime ? 3600 : 50000
+  raceConfig[key] = Math.min(max, Math.max(min, raceConfig[key] + delta))
+  const el = document.getElementById('val' + key.charAt(0).toUpperCase() + key.slice(1))
+  if (el) el.textContent = isTime ? raceConfig[key] + 's' : raceConfig[key] + 'm'
+}
+
+function toggleConfig(mode) {
+  const card   = document.getElementById('card'   + (mode === 'single' ? 'Single' : 'Multi'))
+  const panel  = document.getElementById('config' + (mode === 'single' ? 'Single' : 'Multi'))
+  const isOpen = !panel.classList.contains('hidden')
+  // close both first
+  document.getElementById('configSingle').classList.add('hidden')
+  document.getElementById('configMulti').classList.add('hidden')
+  document.getElementById('cardSingle').classList.remove('open')
+  document.getElementById('cardMulti').classList.remove('open')
+  if (!isOpen) {
+    panel.classList.remove('hidden')
+    card.classList.add('open')
+  }
+}
+
+function startConfiguredGame(mode) {
+  const noTime = raceConfig['noTime' + (mode === 'single' ? 'Single' : 'Multi')]
+  const time   = raceConfig['time'   + (mode === 'single' ? 'Single' : 'Multi')]
+  const dist   = raceConfig['dist'   + (mode === 'single' ? 'Single' : 'Multi')]
+  // Pass config to game
+  window.pendingRaceConfig = { mode, time: noTime ? 999999 : time, dist, noTime }
+  window.showPage('juegoCarrera')
+  if (typeof window.startGameWithConfig === 'function') {
+    window.startGameWithConfig(window.pendingRaceConfig)
+  }
+}
+
+// Toggle no-time
+document.addEventListener('DOMContentLoaded', () => {
+  // Online toggle
+  ;['Single','Multi','Online'].forEach(m => {
+    const chk = document.getElementById('toggleNoTime' + m)
+    const row = document.getElementById('timeRow' + m)
+    const lbl = document.getElementById('noTimeStatus' + m)
+    if (!chk) return
+    chk.addEventListener('change', () => {
+      raceConfig['noTime' + m] = chk.checked
+      row.style.opacity = chk.checked ? '.3' : '1'
+      row.style.pointerEvents = chk.checked ? 'none' : ''
+      lbl.textContent = chk.checked ? 'ON' : 'OFF'
+      lbl.style.color = chk.checked ? 'var(--green)' : ''
+    })
+  })
+
+  document.getElementById('btnOpenSingle')?.addEventListener('click', (e) => { e.stopPropagation(); toggleConfig('single') })
+  document.getElementById('btnOpenMulti')?.addEventListener('click',  (e) => { e.stopPropagation(); toggleConfig('multi') })
+  document.getElementById('btnOpenVideo')?.addEventListener('click',  () => showPage('trainerMenu'))
+
+  // Crear Sala: show config panel first
+  function setOnlineNeon(color) {
+    const l = document.getElementById('onlineNeonL')
+    const r = document.getElementById('onlineNeonR')
+    if (l) { l.style.background=`linear-gradient(to bottom,transparent,${color},transparent)`; l.style.boxShadow=`0 0 20px ${color},0 0 50px ${color}55` }
+    if (r) { r.style.background=`linear-gradient(to bottom,transparent,${color},transparent)`; r.style.boxShadow=`0 0 20px ${color},0 0 50px ${color}55` }
+  }
+
+  document.getElementById('btnCrearSala')?.addEventListener('click', () => {
+    const cfg = document.getElementById('configOnline')
+    const btn = document.getElementById('btnCrearSala')
+    const isOpen = !cfg.classList.contains('hidden')
+    if (isOpen) {
+      cfg.classList.add('hidden')
+      btn.style.borderRadius = ''
+      setOnlineNeon('#ff00c8')  // reset to magenta
+    } else {
+      cfg.classList.remove('hidden')
+      btn.style.borderRadius = '5px 5px 0 0'
+      btn.style.borderBottom = 'none'
+      setOnlineNeon('#ff00c8')  // magenta = crear sala
+    }
+  })
+
+  document.getElementById('btnUnirseSala')?.addEventListener('click', () => {
+    setOnlineNeon('#00f5ff')  // cyan = unirse
+  })
+
+  document.getElementById('btnCancelarCrear')?.addEventListener('click', () => {
+    setOnlineNeon('#ff00c8')
+  })
+  document.getElementById('btnCancelarUnirse')?.addEventListener('click', () => {
+    setOnlineNeon('#ff00c8')
+  })
+
+  // Confirm create room with config
+  document.getElementById('btnConfirmarCrearSala')?.addEventListener('click', () => {
+    // Save online config globally so online race can use it
+    window.onlineRaceConfig = {
+      time: raceConfig.noTimeOnline ? 999999 : raceConfig.timeOnline,
+      dist: raceConfig.distOnline,
+      noTime: raceConfig.noTimeOnline,
+      // duration in ms for Firebase
+      duration: (raceConfig.noTimeOnline ? 999999 : raceConfig.timeOnline) * 1000
+    }
+    document.getElementById('configOnline').classList.add('hidden')
+    document.getElementById('opcionesView').classList.add('hidden')
+    document.getElementById('crearSalaView').classList.remove('hidden')
+    if (typeof window.createRoom === 'function') window.createRoom()
+  })
+})
+
+// ── TRAINER MENU — inicialización tardía ──
+// Se ejecuta DESPUÉS de que trainer.js define TRAINER_PROGRAMS
+window.addEventListener('load', function() {
+  initTrainerCarousel()
+  initTrainerPedalBtn()
+  document.getElementById('btnVolverDesdeTrainer')?.addEventListener('click', () => showPage('inicio'))
+})
+
+function initTrainerCarousel() {
+  const ZONE_COLORS = ['#1e293b','#3b82f6','#39ff14','#facc15','#f97316','#ef4444']
+  const NEON_COLORS = [
+    { l:'#39ff14', r:'#00f5ff' },
+    { l:'#ff6a00', r:'#ff00c8' },
+    { l:'#00f5ff', r:'#3b82f6' },
+    { l:'#ff00c8', r:'#ff6a00' },
+  ]
+
+  let idx = 0
+
+  function getProgs() { return window.TRAINER_PROGRAMS || [] }
+
+  function buildCard(prog, isActive) {
+    const miniChart = prog.blocks.map(b => {
+      const h = 15 + (b.zone/5)*82
+      return `<div style="height:${h}%;flex:1;min-width:4px;border-radius:2px 2px 0 0;background:${ZONE_COLORS[b.zone]};"></div>`
+    }).join('')
+
+    return `
+      <div class="prog-card ${isActive ? 'active-card' : 'prev-card'}"
+           style="--card-color:${prog.color}; ${isActive ? `--card-glow:${prog.color}44;` : ''}"
+           onclick="${isActive ? `window.startTrainer('${prog.id}')` : ''}">
+        <div class="prog-card-header">
+          <div>
+            <div class="prog-card-name" style="color:${prog.color};text-shadow:0 0 10px ${prog.color}44;">${prog.name}</div>
+            <div class="prog-card-level">${prog.level}</div>
+          </div>
+          <div class="prog-card-meta">
+            <div class="prog-card-dur" style="color:${prog.color};">${prog.duration}</div>
+            <div class="prog-card-level">MIN</div>
+          </div>
+        </div>
+        <div class="prog-mini-chart" style="display:flex;align-items:flex-end;gap:2px;height:36px;margin-bottom:14px;">${miniChart}</div>
+        ${isActive ? `<button class="prog-card-btn" style="border-color:${prog.color};color:${prog.color};">▶ COMENZAR</button>` : ''}
+      </div>
+    `
+  }
+
+  function render() {
+    const progs = getProgs()
+    if (!progs.length) return
+
+    const win = document.getElementById('carouselWindow')
+    if (!win) return
+
+    const prev = (idx - 1 + progs.length) % progs.length
+    const next = (idx + 1) % progs.length
+
+    let html = ''
+    if (progs.length > 1) html += buildCard(progs[prev], false)
+    html += buildCard(progs[idx], true)
+    if (progs.length > 1) html += buildCard(progs[next], false)
+    win.innerHTML = html
+
+    // Dots
+    const dotsEl = document.getElementById('carouselDots')
+    if (dotsEl) {
+      dotsEl.innerHTML = progs.map((p, i) =>
+        `<div class="c-dot ${i===idx?'active':''}" style="${i===idx?`background:${p.color};box-shadow:0 0 6px ${p.color};width:20px;border-radius:3px;`:''}" onclick=""></div>`
+      ).join('')
+    }
+
+    // Luces neón
+    const nc = NEON_COLORS[idx % NEON_COLORS.length]
+    const nl = document.getElementById('trainerNeonLeft')
+    const nr = document.getElementById('trainerNeonRight')
+    if (nl) { nl.style.background=`linear-gradient(to bottom,transparent,${nc.l},transparent)`; nl.style.boxShadow=`0 0 20px ${nc.l},0 0 50px ${nc.l}55` }
+    if (nr) { nr.style.background=`linear-gradient(to bottom,transparent,${nc.r},transparent)`; nr.style.boxShadow=`0 0 20px ${nc.r},0 0 50px ${nc.r}55` }
+
+    // Hue del fondo
+    const bg = document.getElementById('trainerMenuBg')
+    if (bg) bg.style.filter = `hue-rotate(${idx*30}deg) brightness(.85)`
+  }
+
+  function goUp()   { const p=getProgs(); if(p.length) { idx=(idx-1+p.length)%p.length; render() } }
+  function goDown() { const p=getProgs(); if(p.length) { idx=(idx+1)%p.length; render() } }
+
+  document.getElementById('carouselUp')?.addEventListener('click', goUp)
+  document.getElementById('carouselDown')?.addEventListener('click', goDown)
+
+  // Touch swipe
+  let ty = 0
+  const cw = document.getElementById('carouselWindow')
+  cw?.addEventListener('touchstart', e => { ty = e.touches[0].clientY }, {passive:true})
+  cw?.addEventListener('touchend',   e => { const d = ty - e.changedTouches[0].clientY; if(Math.abs(d)>40) d>0?goDown():goUp() })
+
+  // Teclado
+  document.addEventListener('keydown', e => {
+    if (!document.getElementById('trainerMenu')?.classList.contains('active')) return
+    if (e.key==='ArrowUp')   goUp()
+    if (e.key==='ArrowDown') goDown()
+    if (e.key==='Enter') { const p=getProgs()[idx]; if(p) window.startTrainer(p.id) }
+  })
+
+  // Hook showPage para re-renderizar
+  const origSP = window.showPage
+  window.showPage = function(pageId) {
+    origSP(pageId)
+    if (pageId === 'trainerMenu') { idx=0; setTimeout(render, 50) }
+  }
+
+  // Render inicial si ya está visible
+  render()
+}
+
+function initTrainerPedalBtn() {
+  const btn = document.getElementById('btnTrainerPedal')
+  if (!btn) return
+  function doPedal() {
+    if (typeof window.trainerPedal === 'function') window.trainerPedal()
+    btn.style.background = 'rgba(0,245,255,.3)'
+    btn.style.boxShadow  = '0 0 40px rgba(0,245,255,.7)'
+    setTimeout(() => { btn.style.background='rgba(0,245,255,.07)'; btn.style.boxShadow='0 0 16px rgba(0,245,255,.2)' }, 120)
+  }
+  btn.addEventListener('click', doPedal)
+  btn.addEventListener('touchstart', e => { e.preventDefault(); doPedal() }, {passive:false})
+}
+
+// ── COPY ROOM CODE ──
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnCopiarCodigo')?.addEventListener('click', () => {
+    const code = document.getElementById('codigoSala')?.textContent
+    if (!code || code === '----') return
+    navigator.clipboard?.writeText(code).then(() => {
+      const msg = document.getElementById('copiado-msg')
+      if (msg) {
+        msg.textContent = '✓ CÓDIGO COPIADO'
+        msg.style.color = 'var(--green)'
+        setTimeout(() => {
+          msg.textContent = 'COMPARTÍ ESTE CÓDIGO CON TU RIVAL'
+          msg.style.color = ''
+        }, 2000)
+      }
+      const btn = document.getElementById('btnCopiarCodigo')
+      if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = '📋', 2000) }
+    })
+  })
+})
+
+// ── SCENERY SPEED ──
+window.setScenerySpeed = (speed) => {
+  const d = speed > 30 ? '0.4s' : speed > 15 ? '0.8s' : '1.4s'
+  document.querySelectorAll('.scenery-track').forEach(el => el.style.animationDuration = d)
+  const r = speed > 30 ? '0.2s' : speed > 15 ? '0.35s' : '0.6s'
+  document.querySelectorAll('.speed-lines').forEach(el => el.style.animationDuration = r)
+}
+
+// ── SYNC VEL HUD ──
+const origUpdate = window.updateDisplay
+// Patch after game.js loads
+document.addEventListener('DOMContentLoaded', () => {
+  const p1h = document.getElementById('p1SpeedHud')
+  const p2h = document.getElementById('p2SpeedHud')
+  const p1s = document.getElementById('p1Speed')
+  const p2s = document.getElementById('p2Speed')
+  setInterval(() => {
+    if (p1h && p1s) p1h.textContent = p1s.textContent
+    if (p2h && p2s) p2h.textContent = p2s.textContent
+  }, 300)
+})
+</script>
+</body>
+</html>
